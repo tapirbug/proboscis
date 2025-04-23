@@ -1,0 +1,349 @@
+use std::fmt;
+
+/// A portion of source code.
+#[derive(Copy, Clone)]
+pub struct Fragment<'a> {
+    /// Full source code into which from and to index to locate this fragment.
+    source: &'a str,
+    /// First character (inclusive)
+    from: usize,
+    /// Last character (exclusive)
+    to: usize,
+}
+
+#[derive(Copy, Clone)]
+pub struct SourcePosition {
+    /// 1-based line number
+    line: usize,
+    /// 1-based column number
+    col: usize,
+}
+
+impl<'a> Fragment<'a> {
+    pub fn new<S: AsRef<str>>(source: &'a S, from: usize, to: usize) -> Self {
+        let source = source.as_ref();
+        assert!(from <= to, "Fragment with from > to");
+        assert!(from != to, "Fragment with from == to would be empty");
+        let len = source.len();
+        assert!(
+            from <= len,
+            "Fragment from={from} would be out of bounds for len={len}"
+        );
+        assert!(
+            to <= len,
+            "Fragment to={to} would be out of bounds for len={len}"
+        );
+        Self { source, from, to }
+    }
+
+    pub fn union<I: IntoIterator<Item = Self>>(fragments: I) -> Option<Self> {
+        fragments.into_iter().reduce(|left, right| {
+            // OPTIMIZE this should be compared by pointer
+            assert!(left.source == right.source);
+            Self {
+                source: left.source,
+                from: left.from.min(right.from),
+                to: left.to.max(right.to),
+            }
+        })
+    }
+
+    /// The amount of characters in the fragment.
+    ///
+    /// This may be less than the number of bytes.
+    pub fn char_count(&self) -> usize {
+        self.source().chars().count()
+    }
+
+    /// The characters that make up the source code of this fragment.
+    pub fn source(&self) -> &str {
+        &self.source[self.from..self.to]
+    }
+
+    /// All characters before the fragment.
+    pub fn source_before(&self) -> &str {
+        &self.source[..self.from]
+    }
+
+    /// All characters after the fragment.
+    pub fn source_after(&self) -> &str {
+        &self.source[self.to..]
+    }
+
+    pub fn from_position(&self) -> SourcePosition {
+        SourcePosition::START.advance(self.source_before())
+    }
+
+    pub fn to_position(&self) -> SourcePosition {
+        // same as SourcePosition::START.advance(self.source_before()).advance(self.source())
+        // or self.from_position().advance(self.source())
+        SourcePosition::START.advance(&self.source[..self.to])
+    }
+    pub fn from_to_positions(&self) -> (SourcePosition, SourcePosition) {
+        let from = self.from_position();
+        let to = from.advance(self.source());
+        (from, to)
+    }
+}
+
+impl<'a> AsRef<str> for Fragment<'a> {
+    fn as_ref(&self) -> &str {
+        self.source()
+    }
+}
+
+impl<'a> fmt::Debug for Fragment<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let source = self.source();
+        let from_pos = self.from_position();
+        let line = from_pos.line_no();
+        let col = from_pos.col_no();
+        let char_count = self.char_count();
+        f.debug_struct("Fragment")
+            .field("source", &source)
+            .field("line", &line)
+            .field("col", &col)
+            .field("char_count", &char_count)
+            .finish()
+    }
+}
+
+impl<'a> fmt::Display for Fragment<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let source = self.source();
+        let from_pos = self.from_position();
+        write!(f, "`{source}` at {from_pos}")
+    }
+}
+
+impl SourcePosition {
+    const START: SourcePosition = SourcePosition { line: 1, col: 1 };
+
+    /// The 1-based line number.
+    pub fn line_no(self) -> usize {
+        self.line
+    }
+
+    // The 1-based column number.
+    pub fn col_no(self) -> usize {
+        self.col
+    }
+
+    fn advance(mut self, source: &str) -> Self {
+        for char in source.chars() {
+            match char {
+                '\n' => {
+                    self.line += 1;
+                    self.col = SourcePosition::START.col;
+                }
+                _ => {
+                    self.col += 1;
+                }
+            }
+        }
+        self
+    }
+}
+
+impl fmt::Debug for SourcePosition {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let line = self.line_no();
+        let col = self.col_no();
+        f.debug_struct("SourcePosition")
+            .field("line", &line)
+            .field("col", &col)
+            .finish()
+    }
+}
+
+impl fmt::Display for SourcePosition {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let line = self.line_no();
+        let col = self.col_no();
+        write!(f, "{line}:{col}")
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use std::iter::{empty, once};
+
+    #[should_panic]
+    #[test]
+    fn out_of_bounds_new() {
+        Fragment::new(&"a", 1, 2);
+    }
+
+    #[should_panic]
+    #[test]
+    fn to_lt_from_new() {
+        Fragment::new(&"a", 1, 0);
+    }
+
+    #[should_panic]
+    #[test]
+    fn empty_new() {
+        Fragment::new(&"a", 1, 1);
+    }
+
+    #[test]
+    fn union_zero() {
+        let positions = empty::<Fragment<'static>>();
+        let result = Fragment::union(positions);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn union_one() {
+        let source = "asdf";
+        let positions = once(Fragment::new(&source, 0, 4));
+        let result = Fragment::union(positions)
+            .expect("expected union of one to have a result");
+        assert_eq!(result.source, source);
+        assert_eq!(result.from, 0);
+        assert_eq!(result.to, 4);
+    }
+
+    #[test]
+    fn union_two_array() {
+        let source = "asdf";
+        let positions =
+            [Fragment::new(&source, 0, 1), Fragment::new(&source, 1, 3)];
+        let result = Fragment::union(positions)
+            .expect("expected union of two to have a result");
+        assert_eq!(result.source, source);
+        assert_eq!(result.from, 0);
+        assert_eq!(result.to, 3);
+    }
+
+    #[test]
+    fn union_three_vec() {
+        let source = "asdf";
+        let positions = vec![
+            Fragment::new(&source, 2, 4),
+            Fragment::new(&source, 1, 2),
+            Fragment::new(&source, 2, 3),
+        ];
+        let result = Fragment::union(positions)
+            .expect("expected union of two to have a result");
+        assert_eq!(result.source, source);
+        assert_eq!(result.from, 1);
+        assert_eq!(result.to, 4);
+    }
+
+    #[test]
+    fn source_accessors() {
+        let fragment = Fragment::new(&"a = 1", 2, 3);
+        assert_eq!(fragment.source_before(), "a ");
+        assert_eq!(fragment.source(), "=");
+        assert_eq!(fragment.source_after(), " 1");
+    }
+
+    #[test]
+    fn char_count() {
+        let fragment = Fragment::new(&"你好", 0, "你好".len());
+        let char_count = fragment.char_count();
+        assert_eq!(char_count, 2);
+    }
+
+    #[test]
+    fn fragment_positions_line_1() {
+        let fragment = Fragment::new(&"a = 1", 2, 3);
+        let from = fragment.from_position();
+        assert_eq!(from.line_no(), 1);
+        assert_eq!(
+            from.col_no(),
+            3,
+            "one-based column number for from position"
+        );
+        let to = fragment.to_position();
+        assert_eq!(to.line_no(), 1);
+        assert_eq!(to.col_no(), 4, "one-based column number for to position");
+        let (from, to) = fragment.from_to_positions();
+        assert_eq!(from.line_no(), 1);
+        assert_eq!(
+            from.col_no(),
+            3,
+            "one-based column number for from position, combined version"
+        );
+        assert_eq!(to.line_no(), 1);
+        assert_eq!(
+            to.col_no(),
+            4,
+            "one-based column number for to position, combined version"
+        );
+    }
+
+    #[test]
+    fn fragment_positions_lines_2_3() {
+        let source = &"\nb = 3\n \nc=4";
+        let equals_line_2 = Fragment::new(source, 3, 4);
+        assert_eq!(equals_line_2.source(), "=");
+        let literal_line_4 = Fragment::new(source, 11, 12);
+        assert_eq!(literal_line_4.source(), "4");
+
+        let from = equals_line_2.from_position();
+        assert_eq!(from.line_no(), 2);
+        assert_eq!(
+            from.col_no(),
+            3,
+            "one-based column number for from position"
+        );
+        let to = equals_line_2.to_position();
+        assert_eq!(to.line_no(), 2);
+        assert_eq!(to.col_no(), 4, "one-based column number for to position");
+        let (from, to) = equals_line_2.from_to_positions();
+        assert_eq!(from.line_no(), 2);
+        assert_eq!(
+            from.col_no(),
+            3,
+            "one-based column number for from position, combined version"
+        );
+        assert_eq!(to.line_no(), 2);
+        assert_eq!(
+            to.col_no(),
+            4,
+            "one-based column number for to position, combined version"
+        );
+
+        let from = literal_line_4.from_position();
+        assert_eq!(from.line_no(), 4);
+        assert_eq!(
+            from.col_no(),
+            3,
+            "one-based column number for from position"
+        );
+        let to = literal_line_4.to_position();
+        assert_eq!(to.line_no(), 4);
+        assert_eq!(to.col_no(), 4, "one-based column number for to position");
+        let (from, to) = literal_line_4.from_to_positions();
+        assert_eq!(from.line_no(), 4);
+        assert_eq!(
+            from.col_no(),
+            3,
+            "one-based column number for from position, combined version"
+        );
+        assert_eq!(to.line_no(), 4);
+        assert_eq!(
+            to.col_no(),
+            4,
+            "one-based column number for to position, combined version"
+        );
+    }
+
+    #[test]
+    fn format_position() {
+        let source = &"\nb = 3\n \nc=4";
+        let literal_line_4 =
+            &format!("{}", Fragment::new(source, 11, 12).from_position());
+        assert_eq!(literal_line_4, "4:3");
+    }
+
+    #[test]
+    fn format_fragment() {
+        let source = &"\nb = 3\n \nc=4";
+        let b_line_2 = &format!("{}", Fragment::new(source, 1, 2));
+        assert_eq!(b_line_2, "`b` at 2:1");
+    }
+}
