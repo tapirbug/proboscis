@@ -29,6 +29,7 @@ pub enum TokenKind {
     IntLit,
     FloatLit,
     StringLit,
+    Comment,
     /// White-space, including newlines.
     Ws,
 }
