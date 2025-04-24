@@ -68,12 +68,7 @@ impl<'s> Lexer<'s> {
             (')', _) => {
                 Ok(Token::new(self.take(")".len()), TokenKind::RightParen))
             }
-            ('"' | '*', _) => {
-                let kind = match head {
-                    '"' => TokenKind::StringLit,
-                    '*' => TokenKind::Variable,
-                    _ => unreachable!(),
-                };
+            ('"', _) => {
                 let mut backslash_prefix = 0;
                 for (idx, char) in source {
                     match char {
@@ -84,7 +79,7 @@ impl<'s> Lexer<'s> {
                             // end of string
                             let len = idx + "\"".len();
                             let fragment = self.take(len);
-                            return Some(Ok(Token::new(fragment, kind)));
+                            return Some(Ok(Token::new(fragment, TokenKind::StringLit)));
                         }
                         _ => {
                             backslash_prefix = 0;
@@ -92,8 +87,7 @@ impl<'s> Lexer<'s> {
                     }
                 }
                 let rest_fragment = self.take_rest().unwrap().of(self.source);
-                Err(LexerError::Unterminated {
-                    kind,
+                Err(LexerError::UnterminatedStringLit {
                     fragment: rest_fragment,
                 })
             }
@@ -160,17 +154,16 @@ impl<'s> Lexer<'s> {
 }
 
 fn is_identifier_start(c: char) -> bool {
-    matches!(c, '+' | '-' | '/' | '*' | '.' | '_') || c.is_alphabetic()
+    matches!(c, '+' | '-' | '/' | '*' | '.' | '_' | '\\') || c.is_alphabetic()
 }
 
 fn is_identifier_continue(c: char) -> bool {
-    matches!(c, '-' | '_') || c.is_alphabetic() || c.is_ascii_digit()
+    is_identifier_start(c) || c.is_ascii_digit()
 }
 
 #[derive(Debug)]
 pub enum LexerError<'s> {
-    Unterminated {
-        kind: TokenKind,
+    UnterminatedStringLit {
         fragment: Fragment<'s>,
     },
     UnrecognizedChar {
@@ -371,7 +364,7 @@ mod test {
 
     #[test]
     fn idents() {
-        let source = "sum product _";
+        let source = "sum product _ *";
 
         let mut lexer = Lexer::new(source);
 
@@ -394,6 +387,14 @@ mod test {
         let token = lexer.next_token().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Ident));
         assert_eq!(token.fragment(source).source(), "_");
+
+                let token = lexer.next_token().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::Ws));
+        assert_eq!(token.fragment(source).source(), " ");
+
+        let token = lexer.next_token().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::Ident));
+        assert_eq!(token.fragment(source).source(), "*");
     }
 
     #[test]
@@ -403,9 +404,8 @@ mod test {
         let mut lexer = Lexer::new(source);
         let is_unterminated_string_lit_error =
             match lexer.next_token().unwrap().unwrap_err() {
-                LexerError::Unterminated {
+                LexerError::UnterminatedStringLit {
                     fragment,
-                    kind: TokenKind::StringLit,
                 } if fragment.source() == "\"" => true,
                 _ => false,
             };
@@ -420,9 +420,8 @@ mod test {
         let mut lexer = Lexer::new(source);
         let is_unterminated_string_lit_error =
             match lexer.next_token().unwrap().unwrap_err() {
-                LexerError::Unterminated {
+                LexerError::UnterminatedStringLit {
                     fragment,
-                    kind: TokenKind::StringLit,
                 } if fragment.source().starts_with("\"") => true,
                 _ => false,
             };
@@ -459,37 +458,13 @@ mod test {
     }
 
     #[test]
-    fn unterminated_empty_variable() {
-        let source = "*";
-
-        let mut lexer = Lexer::new(source);
-        let is_unterminated_variable_lit_error =
-            match lexer.next_token().unwrap().unwrap_err() {
-                LexerError::Unterminated {
-                    fragment,
-                    kind: TokenKind::Variable,
-                } if fragment.source() == "*" => true,
-                _ => false,
-            };
-
-        assert!(is_unterminated_variable_lit_error);
-    }
-
-    #[test]
     fn unterminated_variable() {
         let source = "*asdf";
 
         let mut lexer = Lexer::new(source);
-        let is_unterminated_variable_lit_error =
-            match lexer.next_token().unwrap().unwrap_err() {
-                LexerError::Unterminated {
-                    fragment,
-                    kind: TokenKind::Variable,
-                } if fragment.source().starts_with("*") => true,
-                _ => false,
-            };
+        let token = lexer.next_token().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::Ident));
 
-        assert!(is_unterminated_variable_lit_error);
         assert!(lexer.next_token().is_none());
     }
 
@@ -500,7 +475,7 @@ mod test {
         let mut lexer = Lexer::new(source);
 
         let token = lexer.next_token().unwrap().unwrap();
-        assert!(matches!(token.kind(), TokenKind::Variable));
+        assert!(matches!(token.kind(), TokenKind::Ident));
         assert_eq!(token.fragment(source).source(), "**");
 
         let token = lexer.next_token().unwrap().unwrap();
@@ -508,7 +483,7 @@ mod test {
         assert_eq!(token.fragment(source).source(), " ");
 
         let token = lexer.next_token().unwrap().unwrap();
-        assert!(matches!(token.kind(), TokenKind::Variable));
+        assert!(matches!(token.kind(), TokenKind::Ident));
         assert_eq!(token.fragment(source).source(), "*\\\\*");
 
         let token = lexer.next_token().unwrap().unwrap();
@@ -516,7 +491,7 @@ mod test {
         assert_eq!(token.fragment(source).source(), " ");
 
         let token = lexer.next_token().unwrap().unwrap();
-        assert!(matches!(token.kind(), TokenKind::Variable));
+        assert!(matches!(token.kind(), TokenKind::Ident));
         assert_eq!(token.fragment(source).source(), "*\\a*");
     }
 }

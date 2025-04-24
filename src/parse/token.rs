@@ -26,8 +26,6 @@ pub enum TokenKind {
     RightParen,
     /// General identifier like a function name e.g. `map`, `+`
     Ident,
-    /// Variable name like `*a*`
-    Variable,
     IntLit,
     FloatLit,
     StringLit,
