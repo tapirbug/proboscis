@@ -1,49 +1,52 @@
-use std::fmt;
+use std::{fmt, marker::PhantomData};
 
-/// A portion of source code.
+/// A non-empty portion of source code.
 #[derive(Copy, Clone)]
-pub struct Fragment<'a> {
+pub struct Fragment<'s> {
     /// Full source code into which from and to index to locate this fragment.
-    source: &'a str,
+    source: &'s str,
+    /// Location and length of the fragment in the source code.
+    range: SourceRange<'s>,
+}
+
+/// A non-empty range of characters in a string, as two byte offsets.
+#[derive(Copy, Clone)]
+pub struct SourceRange<'s> {
     /// First character (inclusive)
     from: usize,
     /// Last character (exclusive)
     to: usize,
+    /// Marker to tell the typesystem that the type system that the validity
+    /// of indexes depends on a reference to immutable string data that must
+    /// not be changed as long as this source range exists.
+    _lifetime: PhantomData<&'s str>,
 }
 
+/// A position in source code of a character, optimized for reading by humans.
+///
+/// Line and column are 1-based and count characters, not byte offsets.
 #[derive(Copy, Clone)]
-pub struct SourcePosition {
+pub struct SourceLocation {
     /// 1-based line number
     line: usize,
     /// 1-based column number
     col: usize,
 }
 
-impl<'a> Fragment<'a> {
-    pub fn new<S: AsRef<str>>(source: &'a S, from: usize, to: usize) -> Self {
-        let source = source.as_ref();
-        assert!(from <= to, "Fragment with from > to");
-        assert!(from != to, "Fragment with from == to would be empty");
-        let len = source.len();
-        assert!(
-            from <= len,
-            "Fragment from={from} would be out of bounds for len={len}"
-        );
-        assert!(
-            to <= len,
-            "Fragment to={to} would be out of bounds for len={len}"
-        );
-        Self { source, from, to }
+impl<'s> Fragment<'s> {
+    pub fn new(source: &'s str, from: usize, to: usize) -> Self {
+        SourceRange::new(from, to).of(source)
     }
 
     pub fn union<I: IntoIterator<Item = Self>>(fragments: I) -> Option<Self> {
         fragments.into_iter().reduce(|left, right| {
-            // OPTIMIZE this should be compared by pointer
-            assert!(left.source == right.source);
+            assert!(left.source == right.source); // OPTIMIZE this should be compared by pointer
             Self {
                 source: left.source,
-                from: left.from.min(right.from),
-                to: left.to.max(right.to),
+                range: SourceRange::new(
+                    left.range.from.min(right.range.from),
+                    left.range.to.max(right.range.to),
+                ),
             }
         })
     }
@@ -57,58 +60,50 @@ impl<'a> Fragment<'a> {
 
     /// The characters that make up the source code of this fragment.
     pub fn source(&self) -> &str {
-        &self.source[self.from..self.to]
+        &self.source[self.range.from..self.range.to]
     }
 
     /// All characters before the fragment.
     pub fn source_before(&self) -> &str {
-        &self.source[..self.from]
+        &self.source[..self.range.from]
     }
 
     /// All characters after the fragment.
     pub fn source_after(&self) -> &str {
-        &self.source[self.to..]
+        &self.source[self.range.to..]
     }
 
-    pub fn from_position(&self) -> SourcePosition {
-        SourcePosition::START.advance(self.source_before())
+    pub fn from_position(&self) -> SourceLocation {
+        SourceLocation::START.advance(self.source_before())
     }
 
-    pub fn to_position(&self) -> SourcePosition {
+    pub fn to_position(&self) -> SourceLocation {
         // same as SourcePosition::START.advance(self.source_before()).advance(self.source())
         // or self.from_position().advance(self.source())
-        SourcePosition::START.advance(&self.source[..self.to])
+        SourceLocation::START.advance(&self.source[..self.range.to])
     }
-    pub fn from_to_positions(&self) -> (SourcePosition, SourcePosition) {
+    pub fn from_to_positions(&self) -> (SourceLocation, SourceLocation) {
         let from = self.from_position();
         let to = from.advance(self.source());
         (from, to)
     }
 }
 
-impl<'a> AsRef<str> for Fragment<'a> {
-    fn as_ref(&self) -> &str {
-        self.source()
-    }
-}
-
-impl<'a> fmt::Debug for Fragment<'a> {
+impl<'s> fmt::Debug for Fragment<'s> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let source = self.source();
         let from_pos = self.from_position();
         let line = from_pos.line_no();
         let col = from_pos.col_no();
-        let char_count = self.char_count();
         f.debug_struct("Fragment")
             .field("source", &source)
             .field("line", &line)
             .field("col", &col)
-            .field("char_count", &char_count)
             .finish()
     }
 }
 
-impl<'a> fmt::Display for Fragment<'a> {
+impl<'s> fmt::Display for Fragment<'s> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let source = self.source();
         let from_pos = self.from_position();
@@ -116,8 +111,61 @@ impl<'a> fmt::Display for Fragment<'a> {
     }
 }
 
-impl SourcePosition {
-    const START: SourcePosition = SourcePosition { line: 1, col: 1 };
+impl<'s> SourceRange<'s> {
+    pub fn new(from: usize, to: usize) -> Self {
+        assert!(from <= to, "Source range with from > to");
+        assert!(from != to, "Source range with from == to would be empty");
+        Self {
+            from,
+            to,
+            _lifetime: PhantomData,
+        }
+    }
+
+    pub fn union<I: IntoIterator<Item = Self>>(ranges: I) -> Option<Self> {
+        ranges.into_iter().reduce(|left, right| Self {
+            from: left.from.min(right.from),
+            to: left.to.max(right.to),
+            _lifetime: PhantomData,
+        })
+    }
+
+    pub fn of(self, source: &'s str) -> Fragment<'s> {
+        let Self { from, to, .. } = self;
+        let len = source.len();
+        assert!(
+            from <= len,
+            "Source range from={from} would be out of bounds for len={len}"
+        );
+        assert!(
+            to <= len,
+            "Source range to={to} would be out of bounds for len={len}"
+        );
+        Fragment {
+            source,
+            range: self,
+        }
+    }
+}
+
+impl<'s> fmt::Debug for SourceRange<'s> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SourceRange")
+            .field("from", &self.from)
+            .field("to", &self.to)
+            .finish()
+    }
+}
+
+impl<'s> fmt::Display for SourceRange<'s> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Self { from, to, .. } = self;
+        write!(f, "`from byte {from} through {to}")
+    }
+}
+
+impl SourceLocation {
+    const START: SourceLocation = SourceLocation { line: 1, col: 1 };
 
     /// The 1-based line number.
     pub fn line_no(self) -> usize {
@@ -134,7 +182,7 @@ impl SourcePosition {
             match char {
                 '\n' => {
                     self.line += 1;
-                    self.col = SourcePosition::START.col;
+                    self.col = SourceLocation::START.col;
                 }
                 _ => {
                     self.col += 1;
@@ -145,7 +193,7 @@ impl SourcePosition {
     }
 }
 
-impl fmt::Debug for SourcePosition {
+impl fmt::Debug for SourceLocation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let line = self.line_no();
         let col = self.col_no();
@@ -156,7 +204,7 @@ impl fmt::Debug for SourcePosition {
     }
 }
 
-impl fmt::Display for SourcePosition {
+impl fmt::Display for SourceLocation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let line = self.line_no();
         let col = self.col_no();
@@ -201,8 +249,8 @@ mod test {
         let result = Fragment::union(positions)
             .expect("expected union of one to have a result");
         assert_eq!(result.source, source);
-        assert_eq!(result.from, 0);
-        assert_eq!(result.to, 4);
+        assert_eq!(result.range.from, 0);
+        assert_eq!(result.range.to, 4);
     }
 
     #[test]
@@ -213,8 +261,8 @@ mod test {
         let result = Fragment::union(positions)
             .expect("expected union of two to have a result");
         assert_eq!(result.source, source);
-        assert_eq!(result.from, 0);
-        assert_eq!(result.to, 3);
+        assert_eq!(result.range.from, 0);
+        assert_eq!(result.range.to, 3);
     }
 
     #[test]
@@ -228,8 +276,8 @@ mod test {
         let result = Fragment::union(positions)
             .expect("expected union of two to have a result");
         assert_eq!(result.source, source);
-        assert_eq!(result.from, 1);
-        assert_eq!(result.to, 4);
+        assert_eq!(result.range.from, 1);
+        assert_eq!(result.range.to, 4);
     }
 
     #[test]
