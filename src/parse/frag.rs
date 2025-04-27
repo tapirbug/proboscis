@@ -24,6 +24,9 @@ pub struct SourceRange<'s> {
     _lifetime: PhantomData<&'s Source>,
 }
 
+/// A nice way of displaying context for a fragment.
+pub struct SourceContext<'s>(Fragment<'s>);
+
 /// A position in source code of a character, optimized for reading by humans.
 ///
 /// Line and column are 1-based and count characters, not byte offsets.
@@ -56,39 +59,83 @@ impl<'s> Fragment<'s> {
     /// The amount of characters in the fragment.
     ///
     /// This may be less than the number of bytes.
-    pub fn char_count(&self) -> usize {
+    pub fn char_count(self) -> usize {
         self.source().chars().count()
     }
 
     /// The characters that make up the source code of this fragment.
-    pub fn source(&self) -> &str {
+    pub fn source(self) -> &'s str {
         &self.source.as_ref()[self.range.from..self.range.to]
     }
 
     /// All characters before the fragment.
-    pub fn source_before(&self) -> &str {
+    pub fn source_before(self) -> &'s str {
         &self.source.as_ref()[..self.range.from]
     }
 
     /// All characters after the fragment.
-    pub fn source_after(&self) -> &str {
+    pub fn source_after(self) -> &'s str {
         &self.source.as_ref()[self.range.to..]
     }
 
-    pub fn from_position(&self) -> SourceLocation {
+    /// A nice way of displaying context about the fragment.
+    pub fn source_context(self) -> SourceContext<'s> {
+        SourceContext(self)
+    }
+
+    pub fn first_line(self) -> &'s str {
+        let src = self.source.as_ref();
+        let line_from_idx = line_start_before(src, self.range.from);
+        let line_to_idx = line_end_after_or_eq(src, self.range.from);
+        &src[line_from_idx..line_to_idx]
+    }
+
+    /// The full line or lines that make up this fragments, including chracters
+    /// before the start and after the end up to the next newline, if any.
+    /// 
+    /// The final newlines is always excluded, while interior newlines are
+    /// preserved.
+    pub fn all_lines(self) -> &'s str {
+        let src = self.source.as_ref();
+        let line_from_idx = line_start_before(src, self.range.from);
+        let line_to_idx = line_end_after_or_eq(src, self.range.to);
+        &src[line_from_idx..line_to_idx]
+    }
+
+    pub fn from_position(self) -> SourceLocation {
         SourceLocation::START.advance(self.source_before())
     }
 
-    pub fn to_position(&self) -> SourceLocation {
+    pub fn to_position(self) -> SourceLocation {
         // same as SourcePosition::START.advance(self.source_before()).advance(self.source())
         // or self.from_position().advance(self.source())
         SourceLocation::START.advance(&self.source.as_ref()[..self.range.to])
     }
-    pub fn from_to_positions(&self) -> (SourceLocation, SourceLocation) {
+    pub fn from_to_positions(self) -> (SourceLocation, SourceLocation) {
         let from = self.from_position();
         let to = from.advance(self.source());
         (from, to)
     }
+}
+
+/// Find the start (inclusive) and end (exclusive) indexes of the line
+/// containing the specified mid character.
+/// 
+/// The last trailing newline is excluded.
+fn line_of_char_at_idx(str: &str, mid: usize) -> (usize, usize) {
+    (line_start_before(str, mid), line_end_after_or_eq(str, mid))
+}
+
+fn line_start_before(str: &str, before: usize) -> usize {
+    str.as_bytes().iter().enumerate().take(before).rev().find(|&(_, &c)| c == b'\n').map(|(i, _)| i + 1).unwrap_or(0)
+}
+
+fn line_end_after_or_eq(str: &str, after: usize) -> usize {
+    str.as_bytes().iter()
+    .enumerate()
+    // assume the specified from character is not itself the newline by adding (this allows skipping lines by giving the newline offsite)
+    .skip(after + 1)
+    .find(|&(_, &c)| c == b'\n').map(|(i, _)| i).unwrap_or_else(|| str.len())
 }
 
 impl<'s> fmt::Debug for Fragment<'s> {
@@ -110,6 +157,24 @@ impl<'s> fmt::Display for Fragment<'s> {
         let source = self.source();
         let from_pos = self.from_position();
         write!(f, "`{source}` at {from_pos}")
+    }
+}
+
+impl<'s> fmt::Display for SourceContext<'s> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (from, to) = self.0.from_to_positions();
+        let first_line = self.0.first_line();
+        writeln!(f, "At line {}:", from.line_no())?;
+        writeln!(f, "{}", first_line)?;
+        let highlight_from = from.col_no() - 1;
+        let highlight_to = if from.line_no() == to.line_no() { to.col_no() - 1 } else { highlight_from + 1 };
+        for _ in 0..highlight_from {
+            write!(f, " ")?;
+        }
+        for _ in highlight_from..highlight_to {
+            write!(f, "^")?;
+        }
+        Ok(())
     }
 }
 

@@ -1,3 +1,5 @@
+use std::fmt;
+
 use crate::parse::{ast::Atom, token::TokenKind};
 
 use super::{
@@ -13,7 +15,7 @@ use super::{
 
 type InnerStream<'s> = LookaheadStream<'s, Ignore<Lexer<'s>, 2>, 1>;
 
-struct Parser<'s> {
+pub struct Parser<'s> {
     lexer: InnerStream<'s>,
 }
 
@@ -48,8 +50,8 @@ impl<'s> Parser<'s> {
         let source = self.lexer.source();
         let [ahead0] = self.lexer.max_lookahead();
         let token0 = ahead0
-            .ok_or(ParserError::UnexpectedEnd)?
-            .map_err(|e| e.clone())?;
+            .ok_or_else(|| ParserError::unexpected_end(source))?
+            .map_err(|e| ParserError::lexer_error(source, e.clone()))?;
         let fragment0 = token0.fragment(source);
         let source0 = fragment0.source();
 
@@ -65,18 +67,18 @@ impl<'s> Parser<'s> {
                 }
             }
             TokenKind::Comment | TokenKind::Ws => unreachable!(),
-            _ => Err(ParserError::MismatchedToken {
-                token: self.lexer.next().unwrap().unwrap(),
-            }),
+            _ => Err(ParserError::mismatched_token(source, self.lexer.next().unwrap().unwrap())),
         }
     }
 
     fn parse_list<'a>(&'a mut self) -> Result<AstNode<'s>, ParserError<'s>> {
+        let source = self.lexer.source();
         let opening =
-            self.lexer.next().ok_or(ParserError::UnexpectedEnd)??;
+            self.lexer.next().ok_or_else(|| ParserError::unexpected_end(source))?
+            .map_err(|e| ParserError::lexer_error(source, e.clone()))?;
         match opening.kind() {
             TokenKind::LeftParen => {}
-            _ => return Err(ParserError::MismatchedToken { token: opening }),
+            _ => return Err(ParserError::mismatched_token(source, opening)),
         }
 
         let mut closing = None;
@@ -93,9 +95,7 @@ impl<'s> Parser<'s> {
         }
 
         let closing = closing
-            .ok_or_else(|| ParserError::UnbalancedParenthesis {
-                opening: opening.clone(),
-            })?
+            .ok_or_else(|| ParserError::unbalanced_parenthesis(source, opening.clone()))?
             .unwrap();
 
         Ok(List::new(
@@ -108,17 +108,20 @@ impl<'s> Parser<'s> {
     }
 
     fn parse_quoted_list<'a>(&'a mut self) -> Result<AstNode<'s>, ParserError<'s>> {
-        let tick = self.lexer.next().ok_or(ParserError::UnexpectedEnd)??;
+        let source = self.lexer.source();
+        let tick = self.lexer.next().ok_or_else(|| ParserError::unexpected_end(source))?
+        .map_err(|e| ParserError::lexer_error(source, e.clone()))?;
         match (tick.kind(), tick.fragment(self.lexer.source()).source()) {
             (TokenKind::Ident, "'") => {}
-            _ => return Err(ParserError::MismatchedToken { token: tick }),
+            _ => return Err(ParserError::mismatched_token(source, tick)),
         }
 
         let opening =
-            self.lexer.next().ok_or(ParserError::UnexpectedEnd)??;
+            self.lexer.next().ok_or_else(|| ParserError::unexpected_end(source))?
+            .map_err(|e| ParserError::lexer_error(source, e.clone()))?;
         match opening.kind() {
             TokenKind::LeftParen => {}
-            _ => return Err(ParserError::MismatchedToken { token: opening }),
+            _ => return Err(ParserError::mismatched_token(source, opening)),
         }
 
         let mut closing = None;
@@ -135,9 +138,7 @@ impl<'s> Parser<'s> {
         }
 
         let closing = closing
-            .ok_or_else(|| ParserError::UnbalancedParenthesis {
-                opening: opening.clone(),
-            })?
+            .ok_or_else(|| ParserError::unbalanced_parenthesis(source, opening.clone()))?
             .unwrap();
 
         Ok(QuotedList::new(
@@ -151,16 +152,68 @@ impl<'s> Parser<'s> {
 }
 
 #[derive(Debug)]
-enum ParserError<'s> {
+pub enum ParserErrorDetails<'s> {
     LexerError { error: LexerError<'s> },
     MismatchedToken { token: Token<'s> },
     UnbalancedParenthesis { opening: Token<'s> },
     UnexpectedEnd,
 }
 
-impl<'s> From<LexerError<'s>> for ParserError<'s> {
-    fn from(error: LexerError<'s>) -> Self {
-        ParserError::LexerError { error }
+#[derive(Debug)]
+pub struct ParserError<'s> {
+    source: &'s Source,
+    details: ParserErrorDetails<'s>
+}
+
+impl<'s> ParserError<'s> {
+    pub fn lexer_error(source: &'s Source, error: LexerError<'s>) -> Self {
+        Self {
+            source,
+            details: ParserErrorDetails::LexerError { error }
+        }
+    }
+
+    pub fn mismatched_token(source: &'s Source, token: Token<'s>) -> Self {
+        Self {
+            source,
+            details: ParserErrorDetails::MismatchedToken { token }
+        }
+    }
+
+    pub fn unbalanced_parenthesis(source: &'s Source, opening: Token<'s>) -> Self {
+        Self {
+            source,
+            details: ParserErrorDetails::UnbalancedParenthesis { opening }
+        }
+    }
+
+    pub fn unexpected_end(source: &'s Source) -> Self {
+        Self {
+            source,
+            details: ParserErrorDetails::UnexpectedEnd
+        }
+    }
+}
+
+impl<'s> fmt::Display for ParserError<'s> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.details {
+            ParserErrorDetails::LexerError { ref error } => {
+                write!(f, "{}", error)?;
+            },
+            ParserErrorDetails::MismatchedToken { ref token } => {
+                writeln!(f, "unexpected token: {}", token.fragment(self.source))?;
+                writeln!(f, "{}", token.fragment(self.source).source_context())?;
+            },
+            ParserErrorDetails::UnbalancedParenthesis { ref opening } => {
+                writeln!(f, "list never closed: {}", opening.fragment(self.source))?;
+                writeln!(f, "{}", opening.fragment(self.source).source_context())?;
+            },
+            ParserErrorDetails::UnexpectedEnd => {
+                writeln!(f, "unexpected end")?;
+            }
+        }
+        Ok(())
     }
 }
 

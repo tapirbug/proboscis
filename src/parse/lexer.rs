@@ -1,3 +1,7 @@
+use std::fmt;
+
+use crate::parse::frag;
+
 use super::frag::{Fragment, SourceRange};
 use super::source::{self, Source};
 use super::stream::TokenStream;
@@ -178,6 +182,22 @@ fn is_identifier_continue(c: char) -> bool {
 pub enum LexerError<'s> {
     UnterminatedStringLit { fragment: Fragment<'s> },
     UnrecognizedChar { fragment: Fragment<'s> },
+}
+
+impl<'s> fmt::Display for LexerError<'s> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LexerError::UnrecognizedChar { fragment } => {
+                writeln!(f, "unrecognized character: {}", fragment)?;
+                writeln!(f, "{}", fragment.source_context())?;
+            },
+            LexerError::UnterminatedStringLit { fragment } => {
+                writeln!(f, "unterminated string literal opened at: {}", fragment)?;
+                writeln!(f, "{}", fragment.source_context())?;
+            }
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
