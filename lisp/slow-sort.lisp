@@ -8,3 +8,6 @@
             (slow-sort (remove-if-not (lambda (x) (< x (car list))) list))
             (remove-if-not (lambda (x) (= x (car list))) list)
             (slow-sort (remove-if-not (lambda (x) (> x (car list))) list)))))
+
+(defparameter *list* '(123 2 12322 44 22 33))
+(format t "Sorted version of ~a is ~a" *list* (slow-sort *list*))

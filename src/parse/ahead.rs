@@ -7,7 +7,7 @@ use super::{
 use std::mem;
 
 /// Provides token lookahead for a lexer to be used by a parser.
-pub struct Ahead<'s, I, const N: usize> {
+pub struct LookaheadStream<'s, I, const N: usize> {
     /// Inner token stream to get tokens from
     inner: I,
     /// The lookahead buffer, unused entries are None
@@ -22,7 +22,11 @@ enum LookaheadEntry<'s> {
     Used(Option<Result<Token<'s>, LexerError<'s>>>),
 }
 
-impl<'s, I: TokenStream<'s>, const N: usize> Ahead<'s, I, N> {
+/*pub struct Lookahead<'b, 's, const N: usize> {
+    buf: &'b [LookaheadEntry<'s>; N]
+}*/
+
+impl<'s, I: TokenStream<'s>, const N: usize> LookaheadStream<'s, I, N> {
     pub fn new(inner: I) -> Self {
         assert!(N >= 1);
         Self {
@@ -100,10 +104,14 @@ impl<'s, I: TokenStream<'s>, const N: usize> Ahead<'s, I, N> {
 }
 
 impl<'s, I: TokenStream<'s>, const N: usize> TokenStream<'s>
-    for Ahead<'s, I, N>
+    for LookaheadStream<'s, I, N>
 {
     fn next<'l>(&'l mut self) -> Option<Result<Token<'s>, LexerError<'s>>> {
         self.consume()
+    }
+
+    fn source<'l>(&'l self) -> &'s Source {
+        self.inner.source()
     }
 }
 
@@ -121,13 +129,13 @@ mod test {
     #[test]
     fn cannot_create_lookahead_0() {
         let source = Source::new("a 12 dead beef");
-        let _ahead: Ahead<_, 0> = Ahead::new(Lexer::new(&source));
+        let _ahead: LookaheadStream<_, 0> = LookaheadStream::new(Lexer::new(&source));
     }
 
     #[test]
     fn lookahead_1_lookahead_all_at_once() {
         let source = Source::new("a 12 dead beef");
-        let mut ahead: Ahead<_, 1> = Ahead::new(Lexer::new(&source));
+        let mut ahead: LookaheadStream<_, 1> = LookaheadStream::new(Lexer::new(&source));
         let [ahead0] = ahead.max_lookahead();
         let ahead0 = ahead0.unwrap().unwrap();
         let ahead0_fragment = ahead0.fragment(&source);
@@ -150,7 +158,7 @@ mod test {
     #[test]
     fn lookahead_2_iter() {
         let source = Source::new("a 12 dead beef");
-        let mut ahead: Ahead<_, 2> = Ahead::new(Lexer::new(&source));
+        let mut ahead: LookaheadStream<_, 2> = LookaheadStream::new(Lexer::new(&source));
         {
             let mut ahead = ahead.iter_lookahead();
 

@@ -1,8 +1,8 @@
 use crate::parse::{ast::Atom, token::TokenKind};
 
 use super::{
-    ahead::Ahead,
-    ast::{AstNode, List},
+    ahead::LookaheadStream,
+    ast::{AstNode, List, QuotedList},
     frag::SourceRange,
     ignore::Ignore,
     lexer::{Lexer, LexerError},
@@ -11,7 +11,7 @@ use super::{
     token::Token,
 };
 
-type InnerStream<'s> = Ahead<'s, Ignore<Lexer<'s>, 2>, 1>;
+type InnerStream<'s> = LookaheadStream<'s, Ignore<Lexer<'s>, 2>, 1>;
 
 struct Parser<'s> {
     lexer: InnerStream<'s>,
@@ -20,7 +20,7 @@ struct Parser<'s> {
 impl<'s> Parser<'s> {
     pub fn new(source: &'s Source) -> Self {
         Self {
-            lexer: Ahead::new(Ignore::new(
+            lexer: LookaheadStream::new(Ignore::new(
                 Lexer::new(source),
                 [TokenKind::Ws, TokenKind::Comment],
             )),
@@ -32,11 +32,11 @@ impl<'s> Parser<'s> {
     /// This is intended as the entry rule to parse a source code document.
     /// 
     /// Only the first call will yield an AST. Subsequent calls will yield an
-    /// empty vector.
+    /// empty vector because the underlying lexer will be exhausted.
     pub fn parse<'a>(&'a mut self) -> Result<Vec<AstNode<'s>>, ParserError<'s>> {
         let mut items = vec![];
         while let Some(Ok(_)) = self.lexer.max_lookahead()[0] {
-            items.push(self.parse_one()?);
+            items.push(self.parse_list()?);
         }
         Ok(items)
     }
@@ -44,11 +44,14 @@ impl<'s> Parser<'s> {
     /// Parses a single list or atom.
     /// 
     /// If the end of string is reached, an error is returned.
-    pub fn parse_one<'a>(&'a mut self) -> Result<AstNode<'s>, ParserError<'s>> {
+    fn parse_one<'a>(&'a mut self) -> Result<AstNode<'s>, ParserError<'s>> {
+        let source = self.lexer.source();
         let [ahead0] = self.lexer.max_lookahead();
         let token0 = ahead0
             .ok_or(ParserError::UnexpectedEnd)?
             .map_err(|e| e.clone())?;
+        let fragment0 = token0.fragment(source);
+        let source0 = fragment0.source();
 
         match token0.kind() {
             TokenKind::LeftParen => self.parse_list(),
@@ -56,7 +59,10 @@ impl<'s> Parser<'s> {
             | TokenKind::IntLit
             | TokenKind::StringLit
             | TokenKind::Ident => {
-                Ok(Atom::new(self.lexer.next().unwrap().unwrap()))
+                match source0 {
+                    "'" => self.parse_quoted_list(),
+                    _ => Ok(Atom::new(self.lexer.next().unwrap().unwrap()))
+                }
             }
             TokenKind::Comment | TokenKind::Ws => unreachable!(),
             _ => Err(ParserError::MismatchedToken {
@@ -100,6 +106,48 @@ impl<'s> Parser<'s> {
             items,
         ))
     }
+
+    fn parse_quoted_list<'a>(&'a mut self) -> Result<AstNode<'s>, ParserError<'s>> {
+        let tick = self.lexer.next().ok_or(ParserError::UnexpectedEnd)??;
+        match (tick.kind(), tick.fragment(self.lexer.source()).source()) {
+            (TokenKind::Ident, "'") => {}
+            _ => return Err(ParserError::MismatchedToken { token: tick }),
+        }
+
+        let opening =
+            self.lexer.next().ok_or(ParserError::UnexpectedEnd)??;
+        match opening.kind() {
+            TokenKind::LeftParen => {}
+            _ => return Err(ParserError::MismatchedToken { token: opening }),
+        }
+
+        let mut closing = None;
+        let mut items = vec![];
+        while let Some(Ok(token)) = self.lexer.max_lookahead()[0] {
+            if matches!(token.kind(), TokenKind::RightParen) {
+                // end of list found, consume the closing parenthesis
+                closing = self.lexer.next();
+                break;
+            } else {
+                // not end of list yet, parse as an entry of the list
+                items.push(self.parse_one()?)
+            }
+        }
+
+        let closing = closing
+            .ok_or_else(|| ParserError::UnbalancedParenthesis {
+                opening: opening.clone(),
+            })?
+            .unwrap();
+
+        Ok(QuotedList::new(
+            SourceRange::union_two(
+                tick.source_range(),
+                closing.source_range(),
+            ),
+            items,
+        ))
+    }
 }
 
 #[derive(Debug)]
@@ -124,7 +172,7 @@ mod test {
     fn number() {
         let source = Source::new("42");
         let mut parser = Parser::new(&source);
-        let node = parser.parse().unwrap().into_iter().next().unwrap();
+        let node = parser.parse_one().unwrap();
         let node = node.atom().unwrap();
         assert!(matches!(node.token().kind(), TokenKind::IntLit));
     }
@@ -231,14 +279,14 @@ mod test {
             "5"
         );
 
-        let prime = remove[2].atom().unwrap();
-        assert_eq!(prime.source_range().of(&source).source(), "'");
+        let quoted_list = dbg!(&remove[2]).quoted_list().unwrap();
+        assert_eq!(quoted_list.source_range().of(&source).source(), "'(0 10)");
+        assert_eq!(remove[2].source_range().of(&source).source(), "'(0 10)");
 
-        let raw_list = remove[3].list().unwrap();
-        let raw_list = raw_list.elements();
-        assert_eq!(raw_list.len(), 2);
+        let quoted_list = quoted_list.elements();
+        assert_eq!(quoted_list.len(), 2);
         assert_eq!(
-            raw_list[0]
+            quoted_list[0]
                 .atom()
                 .unwrap()
                 .source_range()
@@ -247,7 +295,7 @@ mod test {
             "0"
         );
         assert_eq!(
-            raw_list[1]
+            quoted_list[1]
                 .atom()
                 .unwrap()
                 .source_range()

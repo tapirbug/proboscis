@@ -34,6 +34,10 @@ impl<'s, I: TokenStream<'s>, const N: usize> TokenStream<'s> for Ignore<I, N> {
         // not an ignored token kind
         Some(Ok(token))
     }
+
+    fn source<'l>(&'l self) -> &'s Source {
+        self.inner.source()
+    }
 }
 
 #[cfg(test)]

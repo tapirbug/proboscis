@@ -1,5 +1,5 @@
 use super::frag::{Fragment, SourceRange};
-use super::source::Source;
+use super::source::{self, Source};
 use super::stream::TokenStream;
 use super::token::{Token, TokenKind};
 
@@ -159,6 +159,10 @@ impl<'s> TokenStream<'s> for Lexer<'s> {
                 Err(LexerError::UnrecognizedChar { fragment })
             }
         })
+    }
+
+    fn source<'l>(&'l self) -> &'s Source {
+        &self.source
     }
 }
 

@@ -15,3 +15,6 @@
                 (elaborate-slow-sort lt)
                 eq ; elements exactly equal to pivot are already sorted, no need for recursion here
                 (elaborate-slow-sort gt)))))
+
+(defparameter *list* '(123 2 12322 44 22 33))
+(format t "Sorted version of ~a is ~a" *list* (elaborate-slow-sort *list*))
