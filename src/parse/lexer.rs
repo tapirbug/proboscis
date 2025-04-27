@@ -1,13 +1,15 @@
 use super::frag::{Fragment, SourceRange};
+use super::source::Source;
+use super::stream::TokenStream;
 use super::token::{Token, TokenKind};
 
-struct Lexer<'s> {
-    source: &'s str,
+pub struct Lexer<'s> {
+    source: &'s Source,
     position: usize,
 }
 
 impl<'s> Lexer<'s> {
-    pub fn new(source: &'s str) -> Self {
+    pub fn new(source: &'s Source) -> Self {
         Self {
             source,
             position: 0,
@@ -30,31 +32,26 @@ impl<'s> Lexer<'s> {
         let rest_len = self.source.len() - self.position;
         (rest_len > 0).then(|| self.take(rest_len))
     }
+}
 
-    /// Tries to get the next token, if any, returning `None` if the end is
-    /// reached.
-    ///
-    /// If an error is encountered, returns the error, and then returns only
-    /// `None` on future calls, as if finished parsing.
-    pub fn next_token<'l>(
-        &'l mut self,
-    ) -> Option<Result<Token<'s>, LexerError<'s>>> {
-        let source = &self.source[self.position..];
-        if source.is_empty() {
+impl<'s> TokenStream<'s> for Lexer<'s> {
+    fn next<'l>(&'l mut self) -> Option<Result<Token<'s>, LexerError<'s>>> {
+        let rest = &self.source.as_ref()[self.position..];
+        if rest.is_empty() {
             return None;
         }
 
         let (head, ahead1) = {
-            let mut source = source.chars();
+            let mut source = rest.chars();
             (
                 source.next().unwrap(), // safe because non-empty
                 source.next(),
             )
         };
-        let mut source = source.char_indices().skip(1); // skip head but not ahead1
+        let mut rest = rest.char_indices().skip(1); // skip head but not ahead1
         Some(match (head, ahead1) {
             (' ' | '\n' | '\t' | '\r', _) => {
-                let len = source
+                let len = rest
                     .find(|(_, char)| {
                         !matches!(char, ' ' | '\n' | '\t' | '\r')
                     })
@@ -69,7 +66,7 @@ impl<'s> Lexer<'s> {
                 Ok(Token::new(self.take(")".len()), TokenKind::RightParen))
             }
             (';', _) => {
-                let len = source
+                let len = rest
                     .find(|&(_, c)| c == '\n')
                     // we don't skip the newline here but exclude it from the comment and
                     // generate another WS token for the newline later (and any follow-up white-space after that)
@@ -79,7 +76,7 @@ impl<'s> Lexer<'s> {
             }
             ('"', _) => {
                 let mut backslash_prefix = 0;
-                for (idx, char) in source {
+                for (idx, char) in rest {
                     match char {
                         '\\' => {
                             backslash_prefix += 1;
@@ -111,11 +108,11 @@ impl<'s> Lexer<'s> {
                             .map(|c| c.is_ascii_digit())
                             .unwrap_or(false)) =>
             {
-                let next = source.find(|(_, c)| !c.is_ascii_digit());
+                let next = rest.find(|(_, c)| !c.is_ascii_digit());
                 match next {
                     Some((_, '.')) => {
                         // float number with integer part, now followed by the optional fractional part
-                        let len = source
+                        let len = rest
                             .find(|(_, c)| !c.is_ascii_digit())
                             .map(|(idx, _)| idx)
                             .unwrap_or_else(|| {
@@ -148,7 +145,7 @@ impl<'s> Lexer<'s> {
                 }
             }
             (c, _) if is_identifier_start(c) => {
-                let len = source
+                let len = rest
                     .skip_while(|&(_, c)| is_identifier_continue(c))
                     .next()
                     .map(|(idx, _)| idx)
@@ -166,14 +163,14 @@ impl<'s> Lexer<'s> {
 }
 
 fn is_identifier_start(c: char) -> bool {
-    matches!(c, '+' | '-' | '/' | '*' | '.' | '_' | '\\') || c.is_alphabetic()
+    matches!(c, '+' | '-' | '/' | '*' | '.' | '_' | '\\' | '<' | '>' | '=' | '\'') || c.is_alphabetic()
 }
 
 fn is_identifier_continue(c: char) -> bool {
     is_identifier_start(c) || c.is_ascii_digit()
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum LexerError<'s> {
     UnterminatedStringLit { fragment: Fragment<'s> },
     UnrecognizedChar { fragment: Fragment<'s> },
@@ -185,10 +182,10 @@ mod test {
 
     #[test]
     fn unrecognized() {
-        let source = "\0asdf";
+        let source = &Source::new("\0asdf");
         let mut lexer = Lexer::new(source);
         let is_unrecognized_char_for_nul =
-            match lexer.next_token().unwrap().unwrap_err() {
+            match lexer.next().unwrap().unwrap_err() {
                 LexerError::UnrecognizedChar { fragment }
                     if fragment.source() == "\0" =>
                 {
@@ -197,221 +194,221 @@ mod test {
                 _ => false,
             };
         assert!(is_unrecognized_char_for_nul);
-        assert!(lexer.next_token().is_none());
-        assert!(lexer.next_token().is_none());
-        assert!(lexer.next_token().is_none());
+        assert!(lexer.next().is_none());
+        assert!(lexer.next().is_none());
+        assert!(lexer.next().is_none());
     }
 
     #[test]
     fn ints() {
-        let source = "12 34";
+        let source = &Source::new("12 34");
         let mut lexer = Lexer::new(source);
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::IntLit));
         assert_eq!(token.fragment(source).source(), "12");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Ws));
         assert_eq!(token.fragment(source).source(), " ");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::IntLit));
         assert_eq!(token.fragment(source).source(), "34");
     }
 
     #[test]
     fn positive_ints() {
-        let source = "+12 +34";
+        let source = &Source::new("+12 +34");
         let mut lexer = Lexer::new(source);
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::IntLit));
         assert_eq!(token.fragment(source).source(), "+12");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Ws));
         assert_eq!(token.fragment(source).source(), " ");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::IntLit));
         assert_eq!(token.fragment(source).source(), "+34");
     }
 
     #[test]
     fn negative_ints() {
-        let source = "-12 -34";
+        let source = &Source::new("-12 -34");
         let mut lexer = Lexer::new(source);
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::IntLit));
         assert_eq!(token.fragment(source).source(), "-12");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Ws));
         assert_eq!(token.fragment(source).source(), " ");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::IntLit));
         assert_eq!(token.fragment(source).source(), "-34");
     }
 
     #[test]
     fn sum() {
-        let source = "(+ 12\t34)";
+        let source = &Source::new("(+ 12\t34)");
         let mut lexer = Lexer::new(source);
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::LeftParen));
         assert_eq!(token.fragment(source).source(), "(");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Ident));
         assert_eq!(token.fragment(source).source(), "+");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Ws));
         assert_eq!(token.fragment(source).source(), " ");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::IntLit));
         assert_eq!(token.fragment(source).source(), "12");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Ws));
         assert_eq!(token.fragment(source).source(), "\t");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::IntLit));
         assert_eq!(token.fragment(source).source(), "34");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::RightParen));
         assert_eq!(token.fragment(source).source(), ")");
     }
 
     #[test]
     fn floats() {
-        let source = ".1 0.1 0.";
+        let source = &Source::new(".1 0.1 0.");
 
         let mut lexer = Lexer::new(source);
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::FloatLit));
         assert_eq!(token.fragment(source).source(), ".1");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Ws));
         assert_eq!(token.fragment(source).source(), " ");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::FloatLit));
         assert_eq!(token.fragment(source).source(), "0.1");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Ws));
         assert_eq!(token.fragment(source).source(), " ");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::FloatLit));
         assert_eq!(token.fragment(source).source(), "0.");
     }
 
     #[test]
     fn positive_floats() {
-        let source = "+0.1 +0.";
+        let source = &Source::new("+0.1 +0.");
 
         let mut lexer = Lexer::new(source);
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::FloatLit));
         assert_eq!(token.fragment(source).source(), "+0.1");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Ws));
         assert_eq!(token.fragment(source).source(), " ");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::FloatLit));
         assert_eq!(token.fragment(source).source(), "+0.");
     }
 
     #[test]
     fn negative_floats() {
-        let source = "-0.1 -0.";
+        let source = &Source::new("-0.1 -0.");
 
         let mut lexer = Lexer::new(source);
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::FloatLit));
         assert_eq!(token.fragment(source).source(), "-0.1");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Ws));
         assert_eq!(token.fragment(source).source(), " ");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::FloatLit));
         assert_eq!(token.fragment(source).source(), "-0.");
     }
 
     #[test]
     fn dot_as_ident_then_num() {
-        let source = ". 0";
+        let source = &Source::new(". 0");
 
         let mut lexer = Lexer::new(source);
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Ident));
         assert_eq!(token.fragment(source).source(), ".");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Ws));
         assert_eq!(token.fragment(source).source(), " ");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::IntLit));
         assert_eq!(token.fragment(source).source(), "0");
     }
 
     #[test]
     fn idents() {
-        let source = "sum product _ *";
+        let source = &Source::new("sum product _ *");
 
         let mut lexer = Lexer::new(source);
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Ident));
         assert_eq!(token.fragment(source).source(), "sum");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Ws));
         assert_eq!(token.fragment(source).source(), " ");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Ident));
         assert_eq!(token.fragment(source).source(), "product");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Ws));
         assert_eq!(token.fragment(source).source(), " ");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Ident));
         assert_eq!(token.fragment(source).source(), "_");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Ws));
         assert_eq!(token.fragment(source).source(), " ");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Ident));
         assert_eq!(token.fragment(source).source(), "*");
     }
 
     #[test]
     fn unterminated_empty_string() {
-        let source = "\"";
+        let source = &Source::new("\"");
 
         let mut lexer = Lexer::new(source);
         let is_unterminated_string_lit_error =
-            match lexer.next_token().unwrap().unwrap_err() {
+            match lexer.next().unwrap().unwrap_err() {
                 LexerError::UnterminatedStringLit { fragment }
                     if fragment.source() == "\"" =>
                 {
@@ -425,11 +422,11 @@ mod test {
 
     #[test]
     fn unterminated_string() {
-        let source = "\"asdf";
+        let source = &Source::new("\"asdf");
 
         let mut lexer = Lexer::new(source);
         let is_unterminated_string_lit_error =
-            match lexer.next_token().unwrap().unwrap_err() {
+            match lexer.next().unwrap().unwrap_err() {
                 LexerError::UnterminatedStringLit { fragment }
                     if fragment.source().starts_with("\"") =>
                 {
@@ -439,121 +436,234 @@ mod test {
             };
 
         assert!(is_unterminated_string_lit_error);
-        assert!(lexer.next_token().is_none());
+        assert!(lexer.next().is_none());
     }
 
     #[test]
     fn strings() {
-        let source = "\"\" \"\\\\\" \"\\a\"";
+        let source = &Source::new("\"\" \"\\\\\" \"\\a\"");
 
         let mut lexer = Lexer::new(source);
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::StringLit));
         assert_eq!(token.fragment(source).source(), "\"\"");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Ws));
         assert_eq!(token.fragment(source).source(), " ");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::StringLit));
         assert_eq!(token.fragment(source).source(), "\"\\\\\"");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Ws));
         assert_eq!(token.fragment(source).source(), " ");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::StringLit));
         assert_eq!(token.fragment(source).source(), "\"\\a\"");
     }
 
     #[test]
     fn unterminated_variable() {
-        let source = "*asdf";
+        let source = &Source::new("*asdf");
 
         let mut lexer = Lexer::new(source);
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Ident));
 
-        assert!(lexer.next_token().is_none());
+        assert!(lexer.next().is_none());
     }
 
     #[test]
     fn variables() {
-        let source = "** *\\\\* *\\a*";
+        let source = &Source::new("** *\\\\* *\\a*");
 
         let mut lexer = Lexer::new(source);
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Ident));
         assert_eq!(token.fragment(source).source(), "**");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Ws));
         assert_eq!(token.fragment(source).source(), " ");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Ident));
         assert_eq!(token.fragment(source).source(), "*\\\\*");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Ws));
         assert_eq!(token.fragment(source).source(), " ");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Ident));
         assert_eq!(token.fragment(source).source(), "*\\a*");
     }
 
     #[test]
     fn comment_only() {
-        let source = "; this is a comment";
+        let source = &Source::new("; this is a comment");
 
         let mut lexer = Lexer::new(source);
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Comment));
-        assert_eq!(token.fragment(source).source(), source);
+        assert_eq!(token.fragment(source).source(), source.as_ref());
 
-        assert!(lexer.next_token().is_none());
+        assert!(lexer.next().is_none());
     }
 
     #[test]
     fn comment_after() {
-        let source = "1; this is a comment\n \"asdf\" ; another one\n";
+        let source =
+            &Source::new("1; this is a comment\n \"asdf\" ; another one\n");
 
         let mut lexer = Lexer::new(source);
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::IntLit));
         assert_eq!(token.fragment(source).source(), "1");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Comment));
         assert_eq!(token.fragment(source).source(), "; this is a comment");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Ws));
         assert_eq!(token.fragment(source).source(), "\n ");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::StringLit));
         assert_eq!(token.fragment(source).source(), "\"asdf\"");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Ws));
         assert_eq!(token.fragment(source).source(), " ");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Comment));
         assert_eq!(token.fragment(source).source(), "; another one");
 
-        let token = lexer.next_token().unwrap().unwrap();
+        let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Ws));
         assert_eq!(token.fragment(source).source(), "\n");
 
-        assert!(lexer.next_token().is_none());
+        assert!(lexer.next().is_none());
+    }
+
+    #[test]
+    fn lex_remove_if_not() {
+        let source =
+            &Source::new("(remove-if-not (lambda (x) (< x 5)) '(0 10))");
+
+        let mut lexer = Lexer::new(source);
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::LeftParen));
+        assert_eq!(token.fragment(source).source(), "(");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::Ident));
+        assert_eq!(token.fragment(source).source(), "remove-if-not");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::Ws));
+        assert_eq!(token.fragment(source).source(), " ");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::LeftParen));
+        assert_eq!(token.fragment(source).source(), "(");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::Ident));
+        assert_eq!(token.fragment(source).source(), "lambda");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::Ws));
+        assert_eq!(token.fragment(source).source(), " ");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::LeftParen));
+        assert_eq!(token.fragment(source).source(), "(");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::Ident));
+        assert_eq!(token.fragment(source).source(), "x");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::RightParen));
+        assert_eq!(token.fragment(source).source(), ")");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::Ws));
+        assert_eq!(token.fragment(source).source(), " ");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::LeftParen));
+        assert_eq!(token.fragment(source).source(), "(");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::Ident));
+        assert_eq!(token.fragment(source).source(), "<");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::Ws));
+        assert_eq!(token.fragment(source).source(), " ");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::Ident));
+        assert_eq!(token.fragment(source).source(), "x");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::Ws));
+        assert_eq!(token.fragment(source).source(), " ");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::IntLit));
+        assert_eq!(token.fragment(source).source(), "5");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::RightParen));
+        assert_eq!(token.fragment(source).source(), ")");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::RightParen));
+        assert_eq!(token.fragment(source).source(), ")");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::Ws));
+        assert_eq!(token.fragment(source).source(), " ");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::Ident));
+        assert_eq!(token.fragment(source).source(), "'");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::LeftParen));
+        assert_eq!(token.fragment(source).source(), "(");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::IntLit));
+        assert_eq!(token.fragment(source).source(), "0");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::Ws));
+        assert_eq!(token.fragment(source).source(), " ");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::IntLit));
+        assert_eq!(token.fragment(source).source(), "10");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::RightParen));
+        assert_eq!(token.fragment(source).source(), ")");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::RightParen));
+        assert_eq!(token.fragment(source).source(), ")");
     }
 }

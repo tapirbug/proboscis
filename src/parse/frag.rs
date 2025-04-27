@@ -1,10 +1,12 @@
-use std::{fmt, marker::PhantomData};
+use std::{fmt, marker::PhantomData, ptr};
+
+use super::source::Source;
 
 /// A non-empty portion of source code.
 #[derive(Copy, Clone)]
 pub struct Fragment<'s> {
     /// Full source code into which from and to index to locate this fragment.
-    source: &'s str,
+    source: &'s Source,
     /// Location and length of the fragment in the source code.
     range: SourceRange<'s>,
 }
@@ -19,7 +21,7 @@ pub struct SourceRange<'s> {
     /// Marker to tell the typesystem that the type system that the validity
     /// of indexes depends on a reference to immutable string data that must
     /// not be changed as long as this source range exists.
-    _lifetime: PhantomData<&'s str>,
+    _lifetime: PhantomData<&'s Source>,
 }
 
 /// A position in source code of a character, optimized for reading by humans.
@@ -34,13 +36,13 @@ pub struct SourceLocation {
 }
 
 impl<'s> Fragment<'s> {
-    pub fn new(source: &'s str, from: usize, to: usize) -> Self {
+    pub fn new(source: &'s Source, from: usize, to: usize) -> Self {
         SourceRange::new(from, to).of(source)
     }
 
     pub fn union<I: IntoIterator<Item = Self>>(fragments: I) -> Option<Self> {
         fragments.into_iter().reduce(|left, right| {
-            assert!(left.source == right.source); // OPTIMIZE this should be compared by pointer
+            assert!(ptr::eq(left.source, right.source)); // OPTIMIZE this should be compared by pointer
             Self {
                 source: left.source,
                 range: SourceRange::new(
@@ -60,17 +62,17 @@ impl<'s> Fragment<'s> {
 
     /// The characters that make up the source code of this fragment.
     pub fn source(&self) -> &str {
-        &self.source[self.range.from..self.range.to]
+        &self.source.as_ref()[self.range.from..self.range.to]
     }
 
     /// All characters before the fragment.
     pub fn source_before(&self) -> &str {
-        &self.source[..self.range.from]
+        &self.source.as_ref()[..self.range.from]
     }
 
     /// All characters after the fragment.
     pub fn source_after(&self) -> &str {
-        &self.source[self.range.to..]
+        &self.source.as_ref()[self.range.to..]
     }
 
     pub fn from_position(&self) -> SourceLocation {
@@ -80,7 +82,7 @@ impl<'s> Fragment<'s> {
     pub fn to_position(&self) -> SourceLocation {
         // same as SourcePosition::START.advance(self.source_before()).advance(self.source())
         // or self.from_position().advance(self.source())
-        SourceLocation::START.advance(&self.source[..self.range.to])
+        SourceLocation::START.advance(&self.source.as_ref()[..self.range.to])
     }
     pub fn from_to_positions(&self) -> (SourceLocation, SourceLocation) {
         let from = self.from_position();
@@ -122,15 +124,22 @@ impl<'s> SourceRange<'s> {
         }
     }
 
-    pub fn union<I: IntoIterator<Item = Self>>(ranges: I) -> Option<Self> {
-        ranges.into_iter().reduce(|left, right| Self {
+    pub fn union_two(
+        left: SourceRange<'s>,
+        right: SourceRange<'s>,
+    ) -> SourceRange<'s> {
+        Self {
             from: left.from.min(right.from),
             to: left.to.max(right.to),
             _lifetime: PhantomData,
-        })
+        }
     }
 
-    pub fn of(self, source: &'s str) -> Fragment<'s> {
+    pub fn union<I: IntoIterator<Item = Self>>(ranges: I) -> Option<Self> {
+        ranges.into_iter().reduce(Self::union_two)
+    }
+
+    pub fn of(self, source: &'s Source) -> Fragment<'s> {
         let Self { from, to, .. } = self;
         let len = source.len();
         assert!(
@@ -216,23 +225,24 @@ impl fmt::Display for SourceLocation {
 mod test {
     use super::*;
     use std::iter::{empty, once};
+    use std::ptr;
 
     #[should_panic]
     #[test]
     fn out_of_bounds_new() {
-        Fragment::new(&"a", 1, 2);
+        Fragment::new(&Source::new("a"), 1, 2);
     }
 
     #[should_panic]
     #[test]
     fn to_lt_from_new() {
-        Fragment::new(&"a", 1, 0);
+        Fragment::new(&Source::new("a"), 1, 0);
     }
 
     #[should_panic]
     #[test]
     fn empty_new() {
-        Fragment::new(&"a", 1, 1);
+        Fragment::new(&Source::new("a"), 1, 1);
     }
 
     #[test]
@@ -244,30 +254,30 @@ mod test {
 
     #[test]
     fn union_one() {
-        let source = "asdf";
+        let source = Source::new("asdf");
         let positions = once(Fragment::new(&source, 0, 4));
         let result = Fragment::union(positions)
             .expect("expected union of one to have a result");
-        assert_eq!(result.source, source);
+        assert!(ptr::eq(result.source, &source));
         assert_eq!(result.range.from, 0);
         assert_eq!(result.range.to, 4);
     }
 
     #[test]
     fn union_two_array() {
-        let source = "asdf";
-        let positions =
+        let source = Source::new("asdf");
+        let positions: [Fragment<'_>; 2] =
             [Fragment::new(&source, 0, 1), Fragment::new(&source, 1, 3)];
         let result = Fragment::union(positions)
             .expect("expected union of two to have a result");
-        assert_eq!(result.source, source);
+        assert!(ptr::eq(result.source, &source));
         assert_eq!(result.range.from, 0);
         assert_eq!(result.range.to, 3);
     }
 
     #[test]
     fn union_three_vec() {
-        let source = "asdf";
+        let source = Source::new("asdf");
         let positions = vec![
             Fragment::new(&source, 2, 4),
             Fragment::new(&source, 1, 2),
@@ -275,14 +285,15 @@ mod test {
         ];
         let result = Fragment::union(positions)
             .expect("expected union of two to have a result");
-        assert_eq!(result.source, source);
+        assert!(ptr::eq(result.source, &source));
         assert_eq!(result.range.from, 1);
         assert_eq!(result.range.to, 4);
     }
 
     #[test]
     fn source_accessors() {
-        let fragment = Fragment::new(&"a = 1", 2, 3);
+        let source = Source::new("a = 1");
+        let fragment = Fragment::new(&source, 2, 3);
         assert_eq!(fragment.source_before(), "a ");
         assert_eq!(fragment.source(), "=");
         assert_eq!(fragment.source_after(), " 1");
@@ -290,14 +301,16 @@ mod test {
 
     #[test]
     fn char_count() {
-        let fragment = Fragment::new(&"你好", 0, "你好".len());
+        let source = Source::new("你好");
+        let fragment = Fragment::new(&source, 0, "你好".len());
         let char_count = fragment.char_count();
         assert_eq!(char_count, 2);
     }
 
     #[test]
     fn fragment_positions_line_1() {
-        let fragment = Fragment::new(&"a = 1", 2, 3);
+        let source = Source::new("a = 1");
+        let fragment = Fragment::new(&source, 2, 3);
         let from = fragment.from_position();
         assert_eq!(from.line_no(), 1);
         assert_eq!(
@@ -325,10 +338,10 @@ mod test {
 
     #[test]
     fn fragment_positions_lines_2_3() {
-        let source = &"\nb = 3\n \nc=4";
-        let equals_line_2 = Fragment::new(source, 3, 4);
+        let source = Source::new("\nb = 3\n \nc=4");
+        let equals_line_2 = Fragment::new(&source, 3, 4);
         assert_eq!(equals_line_2.source(), "=");
-        let literal_line_4 = Fragment::new(source, 11, 12);
+        let literal_line_4 = Fragment::new(&source, 11, 12);
         assert_eq!(literal_line_4.source(), "4");
 
         let from = equals_line_2.from_position();
@@ -382,16 +395,16 @@ mod test {
 
     #[test]
     fn format_position() {
-        let source = &"\nb = 3\n \nc=4";
+        let source = Source::new("\nb = 3\n \nc=4");
         let literal_line_4 =
-            &format!("{}", Fragment::new(source, 11, 12).from_position());
+            &format!("{}", Fragment::new(&source, 11, 12).from_position());
         assert_eq!(literal_line_4, "4:3");
     }
 
     #[test]
     fn format_fragment() {
-        let source = &"\nb = 3\n \nc=4";
-        let b_line_2 = &format!("{}", Fragment::new(source, 1, 2));
+        let source = Source::new("\nb = 3\n \nc=4");
+        let b_line_2 = &format!("{}", Fragment::new(&source, 1, 2));
         assert_eq!(b_line_2, "`b` at 2:1");
     }
 }

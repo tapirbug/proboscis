@@ -1,0 +1,273 @@
+use crate::parse::{ast::Atom, token::TokenKind};
+
+use super::{
+    ahead::Ahead,
+    ast::{AstNode, List},
+    frag::SourceRange,
+    ignore::Ignore,
+    lexer::{Lexer, LexerError},
+    source::Source,
+    stream::TokenStream as _,
+    token::Token,
+};
+
+type InnerStream<'s> = Ahead<'s, Ignore<Lexer<'s>, 2>, 1>;
+
+struct Parser<'s> {
+    lexer: InnerStream<'s>,
+}
+
+impl<'s> Parser<'s> {
+    pub fn new(source: &'s Source) -> Self {
+        Self {
+            lexer: Ahead::new(Ignore::new(
+                Lexer::new(source),
+                [TokenKind::Ws, TokenKind::Comment],
+            )),
+        }
+    }
+
+    /// Parses zero or more things, e.g. a sequence of function definitions.
+    /// 
+    /// This is intended as the entry rule to parse a source code document.
+    /// 
+    /// Only the first call will yield an AST. Subsequent calls will yield an
+    /// empty vector.
+    pub fn parse<'a>(&'a mut self) -> Result<Vec<AstNode<'s>>, ParserError<'s>> {
+        let mut items = vec![];
+        while let Some(Ok(_)) = self.lexer.max_lookahead()[0] {
+            items.push(self.parse_one()?);
+        }
+        Ok(items)
+    }
+
+    /// Parses a single list or atom.
+    /// 
+    /// If the end of string is reached, an error is returned.
+    pub fn parse_one<'a>(&'a mut self) -> Result<AstNode<'s>, ParserError<'s>> {
+        let [ahead0] = self.lexer.max_lookahead();
+        let token0 = ahead0
+            .ok_or(ParserError::UnexpectedEnd)?
+            .map_err(|e| e.clone())?;
+
+        match token0.kind() {
+            TokenKind::LeftParen => self.parse_list(),
+            TokenKind::FloatLit
+            | TokenKind::IntLit
+            | TokenKind::StringLit
+            | TokenKind::Ident => {
+                Ok(Atom::new(self.lexer.next().unwrap().unwrap()))
+            }
+            TokenKind::Comment | TokenKind::Ws => unreachable!(),
+            _ => Err(ParserError::MismatchedToken {
+                token: self.lexer.next().unwrap().unwrap(),
+            }),
+        }
+    }
+
+    fn parse_list<'a>(&'a mut self) -> Result<AstNode<'s>, ParserError<'s>> {
+        let opening =
+            self.lexer.next().ok_or(ParserError::UnexpectedEnd)??;
+        match opening.kind() {
+            TokenKind::LeftParen => {}
+            _ => return Err(ParserError::MismatchedToken { token: opening }),
+        }
+
+        let mut closing = None;
+        let mut items = vec![];
+        while let Some(Ok(token)) = self.lexer.max_lookahead()[0] {
+            if matches!(token.kind(), TokenKind::RightParen) {
+                // end of list found, consume the closing parenthesis
+                closing = self.lexer.next();
+                break;
+            } else {
+                // not end of list yet, parse as an entry of the list
+                items.push(self.parse_one()?)
+            }
+        }
+
+        let closing = closing
+            .ok_or_else(|| ParserError::UnbalancedParenthesis {
+                opening: opening.clone(),
+            })?
+            .unwrap();
+
+        Ok(List::new(
+            SourceRange::union_two(
+                opening.source_range(),
+                closing.source_range(),
+            ),
+            items,
+        ))
+    }
+}
+
+#[derive(Debug)]
+enum ParserError<'s> {
+    LexerError { error: LexerError<'s> },
+    MismatchedToken { token: Token<'s> },
+    UnbalancedParenthesis { opening: Token<'s> },
+    UnexpectedEnd,
+}
+
+impl<'s> From<LexerError<'s>> for ParserError<'s> {
+    fn from(error: LexerError<'s>) -> Self {
+        ParserError::LexerError { error }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn number() {
+        let source = Source::new("42");
+        let mut parser = Parser::new(&source);
+        let node = parser.parse().unwrap().into_iter().next().unwrap();
+        let node = node.atom().unwrap();
+        assert!(matches!(node.token().kind(), TokenKind::IntLit));
+    }
+
+    #[test]
+    fn empty_list() {
+        let source = Source::new("()");
+        let mut parser = Parser::new(&source);
+        let node = parser.parse().unwrap().into_iter().next().unwrap();
+        let node = node.list().unwrap();
+        assert_eq!(node.source_range().of(&source).source(), "()");
+    }
+
+    #[test]
+    fn one_int_list() {
+        let source = Source::new("( 42)");
+        let mut parser = Parser::new(&source);
+        let node = parser.parse().unwrap().into_iter().next().unwrap();
+        let node = node.list().unwrap();
+        assert_eq!(node.source_range().of(&source).source(), "( 42)");
+        let elements = node.elements();
+        assert_eq!(elements.len(), 1);
+        let el = elements[0].source_range().of(&source);
+        let el = el.source();
+        assert_eq!(el, "42")
+    }
+
+    #[test]
+    fn two_ints_list_list() {
+        let source = Source::new("( ( 42 128)\t)");
+        let mut parser = Parser::new(&source);
+        let node = parser.parse().unwrap().into_iter().next().unwrap();
+        let node = node.list().unwrap();
+        assert_eq!(node.source_range().of(&source).source(), "( ( 42 128)\t)");
+        let elements = node.elements();
+        assert_eq!(elements.len(), 1);
+        let node = elements[0].list().unwrap();
+        assert_eq!(node.source_range().of(&source).source(), "( 42 128)");
+        let elements = node.elements();
+        assert_eq!(elements.len(), 2);
+        let int0 = elements[0].atom().unwrap();
+        let int1 = elements[1].atom().unwrap();
+        assert_eq!(int0.source_range().of(&source).source(), "42");
+        assert_eq!(int1.source_range().of(&source).source(), "128");
+    }
+
+    #[test]
+    fn parse_remove_if_not() {
+        let source =
+            Source::new("(remove-if-not (lambda (x) (< x 5)) '(0 10))");
+        let mut parser = Parser::new(&source);
+        let remove = parser.parse().unwrap().into_iter().next().unwrap();
+        let remove = remove.list().unwrap();
+        let remove = remove.elements();
+
+        assert_eq!(
+            remove[0]
+                .atom()
+                .unwrap()
+                .source_range()
+                .of(&source)
+                .source(),
+            "remove-if-not"
+        );
+
+        let lambda = remove[1].list().unwrap();
+        let lambda = lambda.elements();
+
+        assert_eq!(
+            lambda[0]
+                .atom()
+                .unwrap()
+                .source_range()
+                .of(&source)
+                .source(),
+            "lambda"
+        );
+
+        let lambda_args = lambda[1].list().unwrap();
+        let lambda_args = lambda_args.elements();
+        assert_eq!(lambda_args.len(), 1);
+        assert_eq!(
+            lambda_args[0]
+                .atom()
+                .unwrap()
+                .source_range()
+                .of(&source)
+                .source(),
+            "x"
+        );
+
+        let lt = lambda[2].list().unwrap();
+        let lt = lt.elements();
+        assert_eq!(
+            lt[0].atom().unwrap().source_range().of(&source).source(),
+            "<"
+        );
+        assert_eq!(
+            lt[1].atom().unwrap().source_range().of(&source).source(),
+            "x"
+        );
+        assert_eq!(
+            lt[2].atom().unwrap().source_range().of(&source).source(),
+            "5"
+        );
+
+        let prime = remove[2].atom().unwrap();
+        assert_eq!(prime.source_range().of(&source).source(), "'");
+
+        let raw_list = remove[3].list().unwrap();
+        let raw_list = raw_list.elements();
+        assert_eq!(raw_list.len(), 2);
+        assert_eq!(
+            raw_list[0]
+                .atom()
+                .unwrap()
+                .source_range()
+                .of(&source)
+                .source(),
+            "0"
+        );
+        assert_eq!(
+            raw_list[1]
+                .atom()
+                .unwrap()
+                .source_range()
+                .of(&source)
+                .source(),
+            "10"
+        );
+
+        
+    }
+
+    #[test]
+    fn parse_two_lists() {
+        let source = &Source::new("(defparameter *x* 1)\n(defparameter *y* 2)\n");
+
+        let mut parser = Parser::new(source);
+        let two = parser.parse().unwrap();
+        assert_eq!(two.len(), 2);
+
+        assert!(two[0].list().is_some());
+        assert!(two[1].list().is_some());
+    }
+}
