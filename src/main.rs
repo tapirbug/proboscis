@@ -1,5 +1,6 @@
 use clap::Parser;
 
+mod analysis;
 mod args;
 mod cmd;
 mod parse;
@@ -9,15 +10,11 @@ use args::{OutputFormat, TopLevelArgs};
 fn main() {
     let args = args::TopLevelArgs::parse();
     let result = match args.output_format() {
-        OutputFormat::Wat => {
-            cmd::compile(&args)
-        },
-        OutputFormat::Ast => {
-            cmd::parse(&args)
-        },
+        OutputFormat::Wat => cmd::compile(&args),
+        OutputFormat::Ast => cmd::parse(&args),
     };
     match result {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(e) => {
             eprint!("{e}");
             std::process::exit(1)

@@ -1,4 +1,7 @@
-use std::{fs, io, path::{Path, PathBuf}};
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+};
 
 /// Immutable source code for compilation.
 ///
@@ -15,7 +18,7 @@ impl Source {
     pub fn new(source: &str) -> Self {
         Self {
             text: source.into(),
-            path: PathBuf::new()
+            path: PathBuf::new(),
         }
     }
 

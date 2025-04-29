@@ -1,4 +1,4 @@
-use crate::args::{TopLevelArgs};
+use crate::args::TopLevelArgs;
 
 use super::err::CommandResult;
 

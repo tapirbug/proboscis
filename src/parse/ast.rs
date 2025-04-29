@@ -25,7 +25,7 @@ pub struct List<'s> {
 #[derive(Debug)]
 pub struct QuotedList<'s> {
     /// Source range including the tick.
-    /// 
+    ///
     /// Note that there could be white-space between the tick and the opening
     /// parenthesis marking the start of list entries.
     source_range: SourceRange<'s>,
@@ -41,7 +41,9 @@ impl<'s> AstNode<'s> {
         match self {
             &AstNode::Atom(Atom { ref token }) => token.source_range(),
             &AstNode::List(List { source_range, .. }) => source_range,
-            &AstNode::QuotedList(QuotedList { source_range, .. }) => source_range,
+            &AstNode::QuotedList(QuotedList { source_range, .. }) => {
+                source_range
+            }
         }
     }
 

@@ -6,7 +6,7 @@ pub type CommandResult<T> = Result<T, CommandError>;
 
 /// Top level for presentation to users, without borrowed data.
 pub struct CommandError {
-    msg: String
+    msg: String,
 }
 
 impl Display for CommandError {
@@ -17,12 +17,16 @@ impl Display for CommandError {
 
 impl<'s> From<ParserError<'s>> for CommandError {
     fn from(value: ParserError<'s>) -> Self {
-        CommandError { msg: value.to_string() }
+        CommandError {
+            msg: value.to_string(),
+        }
     }
 }
 
 impl<'s> From<std::io::Error> for CommandError {
     fn from(value: std::io::Error) -> Self {
-        CommandError { msg: value.to_string() }
+        CommandError {
+            msg: value.to_string(),
+        }
     }
 }

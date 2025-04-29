@@ -171,7 +171,10 @@ impl<'s> TokenStream<'s> for Lexer<'s> {
 }
 
 fn is_identifier_start(c: char) -> bool {
-    matches!(c, '+' | '-' | '/' | '*' | '.' | '_' | '\\' | '<' | '>' | '=' | '\'') || c.is_alphabetic()
+    matches!(
+        c,
+        '+' | '-' | '/' | '*' | '.' | '_' | '\\' | '<' | '>' | '=' | '\''
+    ) || c.is_alphabetic()
 }
 
 fn is_identifier_continue(c: char) -> bool {
@@ -190,9 +193,13 @@ impl<'s> fmt::Display for LexerError<'s> {
             LexerError::UnrecognizedChar { fragment } => {
                 writeln!(f, "unrecognized character: {}", fragment)?;
                 writeln!(f, "{}", fragment.source_context())?;
-            },
+            }
             LexerError::UnterminatedStringLit { fragment } => {
-                writeln!(f, "unterminated string literal opened at: {}", fragment)?;
+                writeln!(
+                    f,
+                    "unterminated string literal opened at: {}",
+                    fragment
+                )?;
                 writeln!(f, "{}", fragment.source_context())?;
             }
         }

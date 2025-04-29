@@ -1,7 +1,15 @@
-use std::{fs::{self, File}, path::PathBuf, io::Write as _};
+use std::{
+    fs::{self, File},
+    io::Write as _,
+    path::PathBuf,
+};
 
-use crate::{args::TopLevelArgs, cmd::err::CommandError, parse::{Parser, Source}};
 use super::err::CommandResult;
+use crate::{
+    args::TopLevelArgs,
+    cmd::err::CommandError,
+    parse::{Parser, Source},
+};
 
 pub fn parse(args: &TopLevelArgs) -> CommandResult<()> {
     let sources = load_sources(args.files())?;
@@ -13,7 +21,7 @@ pub fn parse(args: &TopLevelArgs) -> CommandResult<()> {
             Some(path) => {
                 let mut file = File::create(path)?;
                 write!(&mut file, "{:#?}", ast)?;
-            },
+            }
             // write to stdout with some extra decoration on stderr
             None => {
                 eprintln!("file {} is valid.", source.path().display());
@@ -26,6 +34,9 @@ pub fn parse(args: &TopLevelArgs) -> CommandResult<()> {
 }
 
 pub fn load_sources(paths: &[PathBuf]) -> CommandResult<Vec<Source>> {
-    let sources = paths.iter().map(Source::load).collect::<Result<Vec<_>, _>>();
+    let sources = paths
+        .iter()
+        .map(Source::load)
+        .collect::<Result<Vec<_>, _>>();
     sources.map_err(CommandError::from)
 }

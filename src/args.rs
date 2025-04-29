@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use clap::{Parser, Subcommand, Args, ValueEnum};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -13,7 +13,7 @@ pub struct TopLevelArgs {
     #[arg(short, long, value_name = "FILE")]
     output: Option<PathBuf>,
     #[arg(short, long, value_enum, default_value_t)]
-    format: OutputFormat
+    format: OutputFormat,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
@@ -21,12 +21,12 @@ pub enum OutputFormat {
     /// web assembly text
     Wat,
     /// raw AST for debugging
-    Ast
+    Ast,
 }
 
 impl Default for OutputFormat {
     fn default() -> Self {
-        return Self::Wat
+        return Self::Wat;
     }
 }
 

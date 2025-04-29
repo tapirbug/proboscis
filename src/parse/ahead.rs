@@ -129,13 +129,15 @@ mod test {
     #[test]
     fn cannot_create_lookahead_0() {
         let source = Source::new("a 12 dead beef");
-        let _ahead: LookaheadStream<_, 0> = LookaheadStream::new(Lexer::new(&source));
+        let _ahead: LookaheadStream<_, 0> =
+            LookaheadStream::new(Lexer::new(&source));
     }
 
     #[test]
     fn lookahead_1_lookahead_all_at_once() {
         let source = Source::new("a 12 dead beef");
-        let mut ahead: LookaheadStream<_, 1> = LookaheadStream::new(Lexer::new(&source));
+        let mut ahead: LookaheadStream<_, 1> =
+            LookaheadStream::new(Lexer::new(&source));
         let [ahead0] = ahead.max_lookahead();
         let ahead0 = ahead0.unwrap().unwrap();
         let ahead0_fragment = ahead0.fragment(&source);
@@ -158,7 +160,8 @@ mod test {
     #[test]
     fn lookahead_2_iter() {
         let source = Source::new("a 12 dead beef");
-        let mut ahead: LookaheadStream<_, 2> = LookaheadStream::new(Lexer::new(&source));
+        let mut ahead: LookaheadStream<_, 2> =
+            LookaheadStream::new(Lexer::new(&source));
         {
             let mut ahead = ahead.iter_lookahead();
 

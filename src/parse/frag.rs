@@ -92,7 +92,7 @@ impl<'s> Fragment<'s> {
 
     /// The full line or lines that make up this fragments, including chracters
     /// before the start and after the end up to the next newline, if any.
-    /// 
+    ///
     /// The final newlines is always excluded, while interior newlines are
     /// preserved.
     pub fn all_lines(self) -> &'s str {
@@ -120,22 +120,32 @@ impl<'s> Fragment<'s> {
 
 /// Find the start (inclusive) and end (exclusive) indexes of the line
 /// containing the specified mid character.
-/// 
+///
 /// The last trailing newline is excluded.
 fn line_of_char_at_idx(str: &str, mid: usize) -> (usize, usize) {
     (line_start_before(str, mid), line_end_after_or_eq(str, mid))
 }
 
 fn line_start_before(str: &str, before: usize) -> usize {
-    str.as_bytes().iter().enumerate().take(before).rev().find(|&(_, &c)| c == b'\n').map(|(i, _)| i + 1).unwrap_or(0)
+    str.as_bytes()
+        .iter()
+        .enumerate()
+        .take(before)
+        .rev()
+        .find(|&(_, &c)| c == b'\n')
+        .map(|(i, _)| i + 1)
+        .unwrap_or(0)
 }
 
 fn line_end_after_or_eq(str: &str, after: usize) -> usize {
-    str.as_bytes().iter()
-    .enumerate()
-    // assume the specified from character is not itself the newline by adding (this allows skipping lines by giving the newline offsite)
-    .skip(after + 1)
-    .find(|&(_, &c)| c == b'\n').map(|(i, _)| i).unwrap_or_else(|| str.len())
+    str.as_bytes()
+        .iter()
+        .enumerate()
+        // assume the specified from character is not itself the newline by adding (this allows skipping lines by giving the newline offsite)
+        .skip(after + 1)
+        .find(|&(_, &c)| c == b'\n')
+        .map(|(i, _)| i)
+        .unwrap_or_else(|| str.len())
 }
 
 impl<'s> fmt::Debug for Fragment<'s> {
@@ -167,7 +177,11 @@ impl<'s> fmt::Display for SourceContext<'s> {
         writeln!(f, "At line {}:", from.line_no())?;
         writeln!(f, "{}", first_line)?;
         let highlight_from = from.col_no() - 1;
-        let highlight_to = if from.line_no() == to.line_no() { to.col_no() - 1 } else { highlight_from + 1 };
+        let highlight_to = if from.line_no() == to.line_no() {
+            to.col_no() - 1
+        } else {
+            highlight_from + 1
+        };
         for _ in 0..highlight_from {
             write!(f, " ")?;
         }
@@ -219,6 +233,11 @@ impl<'s> SourceRange<'s> {
             source,
             range: self,
         }
+    }
+
+    /// Length of the source range in bytes, not characters
+    pub fn len(self) -> usize {
+        self.to - self.from
     }
 }
 
