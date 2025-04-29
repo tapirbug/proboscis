@@ -1,0 +1,30 @@
+<html>
+  <head>
+    <title>Test</title>
+  </head>
+  <body>
+    <script>
+        const memory = new WebAssembly.Memory({ initial: 1 });
+        const importObject = {
+          js: {
+            mem: memory
+          },
+          console: {
+            log(start, len) {
+              const bytes = new Uint8Array(memory.buffer, start, len)
+              const string = new TextDecoder("utf8").decode(bytes)
+              const p = document.createElement("p")
+              p.innerText = string
+              document.body.appendChild(p)
+            }
+          }
+        }
+        WebAssembly.instantiateStreaming(
+          fetch("data:application/wasm;base64,AGFzbQEAAAABIwZgAn9/AGABfwF/YAR/f39/An9/YAF/An9/YAJ/fwF/YAAAAhkCAmpzA21lbQIAAQdjb25zb2xlA2xvZwAAAwYFAQIDBAUGBgF/AUEgCwcIAQRtYWluAAUKmgIFCwAjACMAIABqJAALLAECfyABIANqIQUgBRABIQQgBCAAIAH8CgAAIAQgAWogAiAD/AoAACAEIAULuwEBAX9BCBABIQEgASAAQRx2QQ9xQRBqQQH8CgAAIAFBAWogAEEYdkEPcUEQakEB/AoAACABQQJqIABBFHZBD3FBEGpBAfwKAAAgAUEDaiAAQRB2QQ9xQRBqQQH8CgAAIAFBBGogAEEMdkEPcUEQakEB/AoAACABQQVqIABBCHZBD3FBEGpBAfwKAAAgAUEGaiAAQQR2QQ9xQRBqQQH8CgAAIAFBB2ogAEEAdkEPcUEQakEB/AoAACABQQgLDwAgACABSgR/IAAFIAELCxIAQQBBEEEDQQgQBBADEAIQAAsLKwIAQQALEEhleSB0aGUgbWF4IGlzOiAAQRALEDAxMjM0NTY3ODlBQkNERUY="),
+          importObject
+        ).then((obj) => {
+          console.log(obj.instance.exports.main()); // "3"
+        });
+    </script>
+  </body>
+</html>

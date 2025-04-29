@@ -1,0 +1,30 @@
+<html>
+  <head>
+    <title>Test</title>
+  </head>
+  <body>
+    <script>
+        const memory = new WebAssembly.Memory({ initial: 1 });
+        const importObject = {
+          js: {
+            mem: memory
+          },
+          console: {
+            log(start, len) {
+              const bytes = new Uint8Array(memory.buffer, start, len)
+              const string = new TextDecoder("utf8").decode(bytes)
+              const p = document.createElement("p")
+              p.innerText = string
+              document.body.appendChild(p)
+            }
+          }
+        }
+        WebAssembly.instantiateStreaming(
+          fetch("{{file}}"),
+          importObject
+        ).then((obj) => {
+          console.log(obj.instance.exports.main()); // "3"
+        });
+    </script>
+  </body>
+</html>
