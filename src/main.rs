@@ -4,14 +4,17 @@ mod args;
 mod cmd;
 mod parse;
 
-use args::{TopLevelArgs, Command};
+use args::{OutputFormat, TopLevelArgs};
 
 fn main() {
     let args = args::TopLevelArgs::parse();
-    let result = match &args.command {
-        Command::Parse(parse) => {
-            cmd::parse(parse)
-        }
+    let result = match args.output_format() {
+        OutputFormat::Wat => {
+            cmd::compile(&args)
+        },
+        OutputFormat::Ast => {
+            cmd::parse(&args)
+        },
     };
     match result {
         Ok(_) => {},

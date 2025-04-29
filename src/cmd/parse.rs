@@ -1,16 +1,26 @@
-use std::path::PathBuf;
+use std::{fs::{self, File}, path::PathBuf, io::Write as _};
 
-use crate::{args::ParseArgs, cmd::err::CommandError, parse::{Parser, Source}};
+use crate::{args::TopLevelArgs, cmd::err::CommandError, parse::{Parser, Source}};
 use super::err::CommandResult;
 
-pub fn parse(args: &ParseArgs) -> CommandResult<()> {
+pub fn parse(args: &TopLevelArgs) -> CommandResult<()> {
     let sources = load_sources(args.files())?;
     for source in &sources {
         let mut parser = Parser::new(source);
         let ast = parser.parse()?;
-        eprintln!("file {} is valid.", source.path().display());
-        eprintln!("AST:");
-        println!("{:#?}", ast);
+        match args.output_path() {
+            // write to file if one is specified, no decoration
+            Some(path) => {
+                let mut file = File::create(path)?;
+                write!(&mut file, "{:#?}", ast)?;
+            },
+            // write to stdout with some extra decoration on stderr
+            None => {
+                eprintln!("file {} is valid.", source.path().display());
+                eprintln!("AST:");
+                println!("{:#?}", ast)
+            }
+        }
     }
     Ok(())
 }
