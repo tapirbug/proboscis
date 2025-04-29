@@ -12,7 +12,7 @@ use crate::{
 };
 
 pub fn parse(args: &TopLevelArgs) -> CommandResult<()> {
-    let sources = load_sources(args.files())?;
+    let sources = Source::load_many(args.files())?;
     for source in &sources {
         let mut parser = Parser::new(source);
         let ast = parser.parse()?;
@@ -31,12 +31,4 @@ pub fn parse(args: &TopLevelArgs) -> CommandResult<()> {
         }
     }
     Ok(())
-}
-
-pub fn load_sources(paths: &[PathBuf]) -> CommandResult<Vec<Source>> {
-    let sources = paths
-        .iter()
-        .map(Source::load)
-        .collect::<Result<Vec<_>, _>>();
-    sources.map_err(CommandError::from)
 }

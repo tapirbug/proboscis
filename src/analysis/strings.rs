@@ -5,7 +5,7 @@ use crate::parse::{AstNode, Source, Token, TokenKind};
 /// Analysis result of static strings for a single source file.
 ///
 /// Records the static strings in their decoded form and their lengths.
-struct StringTable<'s> {
+pub struct StringTable<'s> {
     source: &'s Source,
     /// Static strings, only owned if they contain escapes.
     ///
@@ -17,7 +17,20 @@ struct StringTable<'s> {
     strings: Vec<Cow<'s, str>>,
 }
 
-struct StringTableOffset(usize);
+#[derive(Clone)]
+pub struct StringTableEntry<'s, 't> {
+    offset: StringTableOffset,
+    value: &'t Cow<'s, str>
+}
+
+pub struct StringTableEntryIter<'s, 't> {
+    table: &'t StringTable<'s>,
+    next_idx: usize,
+    next_offset: usize
+}
+
+#[derive(Copy, Clone)]
+pub struct StringTableOffset(usize);
 
 impl<'s> StringTable<'s> {
     pub fn analyze(source: &'s Source, ast: &[AstNode<'s>]) -> Self {
@@ -31,9 +44,16 @@ impl<'s> StringTable<'s> {
         table
     }
 
+    //pub fn merge<'b, 'c, 'd>(&'b self, other: &'c StringTable<'d>) {}
+
     pub fn len(&self) -> usize {
         self.strings.len()
     }
+
+    pub fn entries<'t>(&'t self) -> StringTableEntryIter<'s, 't> {
+        StringTableEntryIter { table: self, next_idx: 0, next_offset: 0 }
+    }
+
     fn add_strings<'b, 'c>(&'b mut self, node: &'c AstNode<'s>) {
         match node {
             AstNode::Atom(atom)
@@ -123,6 +143,49 @@ fn decode_string(raw: &str) -> Cow<str> {
         Cow::Owned(decoded)
     } else {
         Cow::Borrowed(raw)
+    }
+}
+
+impl<'s, 't> StringTableEntryIter<'s, 't> {
+    /// Make a new iterator that continues from the next string table but continuing
+    /// with the offset from previous table iterations.
+    pub fn switch_table<'c, 'ns, 'nt>(&'c self, next: &'nt StringTable<'ns>) -> StringTableEntryIter<'ns, 'nt> {
+        StringTableEntryIter {
+            table: next,
+            next_offset: self.next_offset,
+            next_idx: 0
+        }        
+    }
+}
+
+impl<'s, 't> Iterator for StringTableEntryIter<'s, 't> {
+    type Item = StringTableEntry<'s, 't>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.next_idx >= self.table.strings.len() {
+            return None
+        }
+        let data = &self.table.strings[self.next_idx];
+        let offset = self.next_offset;
+        self.next_idx += 1;
+        self.next_offset += mem::size_of::<u32>() + data.len();
+        Some(StringTableEntry { offset: StringTableOffset(offset), value: data })
+    }
+}
+
+impl<'s, 't> StringTableEntry<'s, 't> {
+    pub fn data(&self) -> &'t Cow<'s, str> {
+        self.value
+    }
+
+    pub fn offset(&self) -> StringTableOffset {
+        self.offset
+    }
+}
+
+impl StringTableOffset {
+    pub fn absolute_offset_from(&self, relative_to: usize) -> usize {
+        relative_to + self.0
     }
 }
 

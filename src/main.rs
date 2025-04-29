@@ -3,6 +3,8 @@ use clap::Parser;
 mod analysis;
 mod args;
 mod cmd;
+mod codegen;
+mod ir;
 mod parse;
 
 use args::{OutputFormat, TopLevelArgs};
