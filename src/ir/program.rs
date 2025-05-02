@@ -1,15 +1,17 @@
 use crate::analysis::MultiStringTable;
 
-pub struct Program<'s> {
-    strings: MultiStringTable<'s>,
+use super::{data::DataAddress, databuilder::StaticData, func::Function};
+
+pub struct Program {
+    static_data: StaticData,
+    functions: Vec<Function>,
 }
 
-impl<'s> Program<'s> {
-    pub fn new(strings: MultiStringTable<'s>) -> Self {
-        Self { strings }
-    }
-
-    pub fn strings(&self) -> &MultiStringTable<'s> {
-        &self.strings
+impl Program {
+    pub fn new(static_data: StaticData, functions: Vec<Function>) -> Self {
+        Self {
+            static_data,
+            functions,
+        }
     }
 }

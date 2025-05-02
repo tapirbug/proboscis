@@ -2,7 +2,7 @@ use std::fmt;
 
 use crate::parse::{AstNode, Atom, List, Source, TokenKind};
 
-pub struct FunctionDefinition<'t, 's> {
+pub struct FunctionDefinition<'s, 't> {
     source: &'s Source,
     name: &'t Atom<'s>,
     args: &'t List<'s>,
@@ -10,7 +10,7 @@ pub struct FunctionDefinition<'t, 's> {
     body: &'t [AstNode<'s>],
 }
 
-impl<'t, 's> FunctionDefinition<'t, 's> {
+impl<'s, 't> FunctionDefinition<'s, 't> {
     /// Try to parse the ast node as a function definition.
     ///
     /// Ok(None) if not a function definition.
@@ -22,8 +22,8 @@ impl<'t, 's> FunctionDefinition<'t, 's> {
         source: &'s Source,
         node: &'t AstNode<'s>,
     ) -> Result<
-        Option<FunctionDefinition<'t, 's>>,
-        FunctionDefinitionError<'t, 's>,
+        Option<FunctionDefinition<'s, 't>>,
+        FunctionDefinitionError<'s, 't>,
     > {
         let list = match node.list() {
             None => return Ok(None), // ignore non-list root-level thingy
@@ -135,7 +135,7 @@ impl<'t, 's> FunctionDefinition<'t, 's> {
 }
 
 #[derive(Debug)]
-pub enum FunctionDefinitionError<'t, 's> {
+pub enum FunctionDefinitionError<'s, 't> {
     MissingName {
         source: &'s Source,
         node: &'t AstNode<'s>,
@@ -154,7 +154,7 @@ pub enum FunctionDefinitionError<'t, 's> {
     },
 }
 
-impl<'t, 's> fmt::Display for FunctionDefinitionError<'t, 's> {
+impl<'s, 't> fmt::Display for FunctionDefinitionError<'s, 't> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             FunctionDefinitionError::MissingName { source, node } => {

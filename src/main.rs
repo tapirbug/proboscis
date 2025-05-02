@@ -6,7 +6,6 @@ mod cmd;
 mod codegen;
 mod ir;
 mod parse;
-mod rt;
 
 use args::{OutputFormat, TopLevelArgs};
 

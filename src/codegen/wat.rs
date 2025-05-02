@@ -8,12 +8,12 @@ use crate::{
 pub fn write_wat<W: Write>(w: &mut W, program: &Program) -> io::Result<()> {
     write!(w, "(module\n")?;
     write!(w, "\t(import \"js\" \"mem\" (memory 1))\n")?;
-    write_strings(w, program.strings())?;
+    //write_strings(w, program.strings())?;
     write!(w, ")\n")?; // closing module
     Ok(())
 }
 
-fn write_strings<W: Write>(
+/*fn write_strings<W: Write>(
     w: &mut W,
     strings: &MultiStringTable,
 ) -> io::Result<()> {
@@ -24,3 +24,4 @@ fn write_strings<W: Write>(
     }
     Ok(())
 }
+*/

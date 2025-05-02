@@ -2,17 +2,17 @@ use std::fmt;
 
 use crate::parse::{AstNode, Atom, Source, TokenKind};
 
-pub struct GlobalDefinition<'t, 's> {
+pub struct GlobalDefinition<'s, 't> {
     source: &'s Source,
     name: &'t Atom<'s>,
     value: &'t AstNode<'s>,
 }
 
-impl<'t, 's> GlobalDefinition<'t, 's> {
+impl<'s, 't> GlobalDefinition<'s, 't> {
     pub fn extract(
         source: &'s Source,
         node: &'t AstNode<'s>,
-    ) -> Result<Option<GlobalDefinition<'t, 's>>, GlobalDefinitionError<'t, 's>>
+    ) -> Result<Option<GlobalDefinition<'s, 't>>, GlobalDefinitionError<'s, 't>>
     {
         let list = match node.list() {
             None => return Ok(None), // ignore non-list root-level thingy
@@ -70,7 +70,11 @@ impl<'t, 's> GlobalDefinition<'t, 's> {
             }
         };
 
-        Ok(Some(GlobalDefinition { source, name, value }))
+        Ok(Some(GlobalDefinition {
+            source,
+            name,
+            value,
+        }))
     }
 
     pub fn source(&self) -> &'s Source {
@@ -87,7 +91,7 @@ impl<'t, 's> GlobalDefinition<'t, 's> {
 }
 
 #[derive(Debug)]
-pub enum GlobalDefinitionError<'t, 's> {
+pub enum GlobalDefinitionError<'s, 't> {
     MissingName {
         source: &'s Source,
         node: &'t AstNode<'s>,
@@ -106,7 +110,7 @@ pub enum GlobalDefinitionError<'t, 's> {
     },
 }
 
-impl<'t, 's> fmt::Display for GlobalDefinitionError<'t, 's> {
+impl<'s, 't> fmt::Display for GlobalDefinitionError<'s, 't> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             GlobalDefinitionError::MissingName { source, node } => {
@@ -140,16 +144,20 @@ mod test {
 
     #[test]
     fn extract_global() {
-        let source = &Source::new("(defparameter *list* '(1 2 3 4))
-(format t \"Max of ~a is ~a\" *list* (maximum *list*))");
+        let source = &Source::new(
+            "(defparameter *list* '(1 2 3 4))
+(format t \"Max of ~a is ~a\" *list* (maximum *list*))",
+        );
         let ast = Parser::new(source).parse().unwrap();
-        let definition = GlobalDefinition::extract(source, &ast[0]).unwrap().unwrap();
+        let definition =
+            GlobalDefinition::extract(source, &ast[0]).unwrap().unwrap();
         let name = definition.name().source_range().of(source).source();
         assert_eq!(name, "*list*");
         let value_code = definition.value().source_range().of(source).source();
         assert_eq!(value_code, "'(1 2 3 4)");
 
-        let non_definition = GlobalDefinition::extract(source, &ast[1]).unwrap();
+        let non_definition =
+            GlobalDefinition::extract(source, &ast[1]).unwrap();
         assert!(non_definition.is_none());
     }
 }

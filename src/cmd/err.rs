@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use crate::{
-    analysis::{FunctionDefinitionError, GlobalDefinitionError, NameError},
+    analysis::{FunctionDefinitionError, GlobalDefinitionError, IrGenError, NameError, SemanticAnalysisError},
     parse::ParserError,
 };
 
@@ -50,8 +50,22 @@ impl<'s> From<std::io::Error> for CommandError {
     }
 }
 
+impl<'s, 't> From<SemanticAnalysisError<'s, 't>> for CommandError {
+    fn from(value: SemanticAnalysisError<'s, 't>) -> Self {
+        CommandError { msg: value.to_string() }
+    }
+}
+
 impl<'t, 's> From<NameError<'t, 's>> for CommandError {
     fn from(value: NameError<'t, 's>) -> Self {
-        CommandError { msg: value.to_string() }
+        CommandError {
+            msg: value.to_string(),
+        }
+    }
+}
+
+impl From<IrGenError> for CommandError {
+    fn from(value: IrGenError) -> Self {
+        match value {}
     }
 }
