@@ -8,8 +8,8 @@ pub enum DataType {
     /// If non-zero, the first 32 bits must point to an element, the last point
     /// to another list node, or are zero if this is the last node.
     ListNode,
-    /// Signed 64-bit integer
-    SInt64,
+    /// Signed 32-bit integer
+    SInt32,
     /// A 32-bit number, followed by
     /// that exact number of bytes forming a valid UTF-8 string.
     ///
@@ -28,7 +28,7 @@ const ALL_T_BITS: u8 = 0b111;
 const fn t_to_i(data_type: DataType) -> u8 {
     match data_type {
         DataType::ListNode => 0b1,
-        DataType::SInt64 => 0b10,
+        DataType::SInt32 => 0b10,
         DataType::CharacterData => 0b100,
     }
 }
@@ -40,7 +40,7 @@ const fn t_to_i(data_type: DataType) -> u8 {
 const fn i_to_t_unsafe(as_i: u8) -> DataType {
     match as_i {
         0b1 => DataType::ListNode,
-        0b10 => DataType::SInt64,
+        0b10 => DataType::SInt32,
         0b100 => DataType::CharacterData,
         _ => panic!(),
     }

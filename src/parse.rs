@@ -10,5 +10,6 @@ mod token;
 
 pub use ast::{AstNode, Atom, List, QuotedList};
 pub use parser::{Parser, ParserError};
-pub use source::Source;
+pub use source::{Source};
+pub use frag::{Fragment, SourceRange, SourceLocation};
 pub use token::{Token, TokenKind};

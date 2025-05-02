@@ -44,9 +44,13 @@ impl<'s> StringTable<'s> {
         table
     }
 
-    //pub fn merge<'b, 'c, 'd>(&'b self, other: &'c StringTable<'d>) {}
+    /// Combined byte length of the string table, including space for the
+    /// lengths.
+    pub fn byte_len(&self) -> usize {
+        self.strings.iter().map(|s| mem::size_of::<u32>() + s.len()).sum()
+    }
 
-    pub fn len(&self) -> usize {
+    pub fn string_count(&self) -> usize {
         self.strings.len()
     }
 
@@ -202,7 +206,7 @@ mod test {
         );
         let ast = Parser::new(source).parse().unwrap();
         let table = StringTable::analyze(source, &ast);
-        assert_eq!(table.len(), 3);
+        assert_eq!(table.string_count(), 3);
 
         let offset = table.get_offset_of_encoded("\"heya!\"").unwrap();
         assert_eq!(offset.0, 0);
@@ -232,7 +236,7 @@ mod test {
         );
         let ast = Parser::new(source).parse().unwrap();
         let table = StringTable::analyze(source, &ast);
-        assert_eq!(table.len(), 2);
+        assert_eq!(table.string_count(), 2);
 
         let offset = table.get_offset_of_encoded("\"9\\\\11\"").unwrap();
         assert_eq!(offset.0, 0);
