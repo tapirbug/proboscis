@@ -5,7 +5,4 @@ struct Place<'s> {
     source_range: SourceRange<'s>,
 }
 
-impl<'s> Place<'s> {
-
-}
-
+impl<'s> Place<'s> {}

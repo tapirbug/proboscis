@@ -1,6 +1,9 @@
 use std::fmt::Display;
 
-use crate::{analysis::{FunctionDefinitionError, GlobalDefinitionError}, parse::ParserError};
+use crate::{
+    analysis::{FunctionDefinitionError, GlobalDefinitionError, NameError},
+    parse::ParserError,
+};
 
 pub type CommandResult<T> = Result<T, CommandError>;
 
@@ -44,5 +47,11 @@ impl<'s> From<std::io::Error> for CommandError {
         CommandError {
             msg: value.to_string(),
         }
+    }
+}
+
+impl<'t, 's> From<NameError<'t, 's>> for CommandError {
+    fn from(value: NameError<'t, 's>) -> Self {
+        CommandError { msg: value.to_string() }
     }
 }

@@ -1,7 +1,7 @@
-use crate::analysis::{MultiStringTable};
+use crate::analysis::MultiStringTable;
 
 pub struct Program<'s> {
-    strings: MultiStringTable<'s>
+    strings: MultiStringTable<'s>,
 }
 
 impl<'s> Program<'s> {

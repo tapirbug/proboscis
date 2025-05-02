@@ -28,7 +28,9 @@ impl Source {
         Ok(Source { path, text })
     }
 
-    pub fn load_many<I: IntoIterator<Item=P>, P: AsRef<Path>>(paths: I) -> io::Result<Vec<Source>> {
+    pub fn load_many<I: IntoIterator<Item = P>, P: AsRef<Path>>(
+        paths: I,
+    ) -> io::Result<Vec<Source>> {
         paths.into_iter().map(Self::load).collect()
     }
 

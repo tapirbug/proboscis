@@ -84,6 +84,10 @@ impl<'s> Atom<'s> {
     pub fn source_range<'b>(&'b self) -> SourceRange<'s> {
         self.token.source_range()
     }
+
+    pub fn fragment<'a>(&'a self, source: &'s Source) -> Fragment<'s> {
+        self.source_range().of(source)
+    }
 }
 
 impl<'s> List<'s> {
@@ -104,6 +108,10 @@ impl<'s> List<'s> {
     pub fn elements<'b>(&'b self) -> &'b [AstNode<'s>] {
         &self.elements
     }
+
+    pub fn fragment<'a>(&'a self, source: &'s Source) -> Fragment<'s> {
+        self.source_range().of(source)
+    }
 }
 
 impl<'s> QuotedList<'s> {
@@ -123,5 +131,9 @@ impl<'s> QuotedList<'s> {
 
     pub fn elements<'b>(&'b self) -> &'b [AstNode<'s>] {
         &self.elements
+    }
+
+    pub fn fragment<'a>(&'a self, source: &'s Source) -> Fragment<'s> {
+        self.source_range().of(source)
     }
 }

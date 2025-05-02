@@ -17,5 +17,5 @@ struct SInt32Data(i32);
 
 #[repr(C)]
 struct CharacterDataHeader {
-    len: Length
+    len: Length,
 }

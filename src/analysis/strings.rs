@@ -20,13 +20,13 @@ pub struct StringTable<'s> {
 #[derive(Clone)]
 pub struct StringTableEntry<'s, 't> {
     offset: StringTableOffset,
-    value: &'t Cow<'s, str>
+    value: &'t Cow<'s, str>,
 }
 
 pub struct StringTableEntryIter<'s, 't> {
     table: &'t StringTable<'s>,
     next_idx: usize,
-    next_offset: usize
+    next_offset: usize,
 }
 
 #[derive(Copy, Clone)]
@@ -47,7 +47,10 @@ impl<'s> StringTable<'s> {
     /// Combined byte length of the string table, including space for the
     /// lengths.
     pub fn byte_len(&self) -> usize {
-        self.strings.iter().map(|s| mem::size_of::<u32>() + s.len()).sum()
+        self.strings
+            .iter()
+            .map(|s| mem::size_of::<u32>() + s.len())
+            .sum()
     }
 
     pub fn string_count(&self) -> usize {
@@ -55,7 +58,11 @@ impl<'s> StringTable<'s> {
     }
 
     pub fn entries<'t>(&'t self) -> StringTableEntryIter<'s, 't> {
-        StringTableEntryIter { table: self, next_idx: 0, next_offset: 0 }
+        StringTableEntryIter {
+            table: self,
+            next_idx: 0,
+            next_offset: 0,
+        }
     }
 
     fn add_strings<'b, 'c>(&'b mut self, node: &'c AstNode<'s>) {
@@ -153,12 +160,15 @@ fn decode_string(raw: &str) -> Cow<str> {
 impl<'s, 't> StringTableEntryIter<'s, 't> {
     /// Make a new iterator that continues from the next string table but continuing
     /// with the offset from previous table iterations.
-    pub fn switch_table<'c, 'ns, 'nt>(&'c self, next: &'nt StringTable<'ns>) -> StringTableEntryIter<'ns, 'nt> {
+    pub fn switch_table<'c, 'ns, 'nt>(
+        &'c self,
+        next: &'nt StringTable<'ns>,
+    ) -> StringTableEntryIter<'ns, 'nt> {
         StringTableEntryIter {
             table: next,
             next_offset: self.next_offset,
-            next_idx: 0
-        }        
+            next_idx: 0,
+        }
     }
 }
 
@@ -167,13 +177,16 @@ impl<'s, 't> Iterator for StringTableEntryIter<'s, 't> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.next_idx >= self.table.strings.len() {
-            return None
+            return None;
         }
         let data = &self.table.strings[self.next_idx];
         let offset = self.next_offset;
         self.next_idx += 1;
         self.next_offset += mem::size_of::<u32>() + data.len();
-        Some(StringTableEntry { offset: StringTableOffset(offset), value: data })
+        Some(StringTableEntry {
+            offset: StringTableOffset(offset),
+            value: data,
+        })
     }
 }
 

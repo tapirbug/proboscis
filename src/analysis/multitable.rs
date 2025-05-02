@@ -1,17 +1,22 @@
-use super::{strings::{StringTableEntry, StringTableEntryIter}, StringTable};
+use super::{
+    StringTable,
+    strings::{StringTableEntry, StringTableEntryIter},
+};
 
 pub struct MultiStringTable<'s> {
-    tables: Vec<StringTable<'s>>
+    tables: Vec<StringTable<'s>>,
 }
 
 pub struct MultiStringTableEntryIter<'s, 't, 'is, 'it> {
     remaining_tables: &'t [StringTable<'s>],
-    iter: Option<StringTableEntryIter<'is, 'it>>
+    iter: Option<StringTableEntryIter<'is, 'it>>,
 }
 
 impl<'s> FromIterator<StringTable<'s>> for MultiStringTable<'s> {
     fn from_iter<T: IntoIterator<Item = StringTable<'s>>>(iter: T) -> Self {
-        MultiStringTable { tables: iter.into_iter().collect() }
+        MultiStringTable {
+            tables: iter.into_iter().collect(),
+        }
     }
 }
 
@@ -26,18 +31,20 @@ impl<'s: 'is, 't: 'it, 'is, 'it> MultiStringTableEntryIter<'s, 't, 'is, 'it> {
         if table.tables.is_empty() {
             Self {
                 remaining_tables: &[],
-                iter: None
+                iter: None,
             }
         } else {
             Self {
                 remaining_tables: &table.tables[1..],
-                iter: Some(table.tables[0].entries())
+                iter: Some(table.tables[0].entries()),
             }
         }
     }
 }
 
-impl<'s: 'is, 't: 'it, 'is, 'it> Iterator for MultiStringTableEntryIter<'s, 't, 'is, 'it> {
+impl<'s: 'is, 't: 'it, 'is, 'it> Iterator
+    for MultiStringTableEntryIter<'s, 't, 'is, 'it>
+{
     type Item = StringTableEntry<'is, 'it>;
 
     fn next(&mut self) -> Option<Self::Item> {

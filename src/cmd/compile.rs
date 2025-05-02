@@ -1,6 +1,14 @@
-use std::{fs::File, io::{stdout}};
+use std::{fs::File, io::stdout};
 
-use crate::{analysis::{FunctionDefinition, GlobalDefinition, MultiStringTable, StringTable}, args::{OutputFormat, TopLevelArgs}, codegen::write_wat, ir::Program, parse::{Parser, Source}};
+use crate::{
+    analysis::{
+        FunctionDefinition, GlobalDefinition, MultiStringTable, NameCheck, StringTable
+    },
+    args::{OutputFormat, TopLevelArgs},
+    codegen::write_wat,
+    ir::Program,
+    parse::{Parser, Source},
+};
 
 use super::err::CommandResult;
 
@@ -29,7 +37,7 @@ pub fn compile(args: &TopLevelArgs) -> CommandResult<()> {
                 Some(def) => {
                     function_definitions.push(def);
                     continue;
-                },
+                }
                 None => {}
             }
 
@@ -38,21 +46,24 @@ pub fn compile(args: &TopLevelArgs) -> CommandResult<()> {
             match def {
                 Some(def) => {
                     global_definitions.push(def);
-                },
+                    continue;
+                }
                 None => {}
             }
 
             // all other cases are considered to be top-level code
             root_code.push(root_node);
         }
+
+        NameCheck::check(source, &function_definitions, &global_definitions, &root_code)?;
     }
-    let string_table : MultiStringTable = string_tables.into_iter().collect();
+    let string_table: MultiStringTable = string_tables.into_iter().collect();
     let program = Program::new(string_table);
     match args.output_path() {
         Some(path) => {
             let mut file = File::create(path)?;
             write_wat(&mut file, &program)?;
-        },
+        }
         None => {
             let mut stdout = stdout().lock();
             write_wat(&mut stdout, &program)?;

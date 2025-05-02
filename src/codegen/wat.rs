@@ -1,6 +1,9 @@
 use std::io::{self, Write};
 
-use crate::{analysis::{MultiStringTable, StringTable}, ir::Program};
+use crate::{
+    analysis::{MultiStringTable, StringTable},
+    ir::Program,
+};
 
 pub fn write_wat<W: Write>(w: &mut W, program: &Program) -> io::Result<()> {
     write!(w, "(module\n")?;
@@ -10,7 +13,10 @@ pub fn write_wat<W: Write>(w: &mut W, program: &Program) -> io::Result<()> {
     Ok(())
 }
 
-fn write_strings<W: Write>(w: &mut W, strings: &MultiStringTable) -> io::Result<()> {
+fn write_strings<W: Write>(
+    w: &mut W,
+    strings: &MultiStringTable,
+) -> io::Result<()> {
     for string in strings.entries() {
         let offset = string.offset().absolute_offset_from(0);
         let data = string.data().as_ref();
