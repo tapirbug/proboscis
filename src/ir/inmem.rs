@@ -37,10 +37,7 @@ pub fn append_place<W: Write>(
     buf: &mut W,
     data_address: DataAddress,
 ) -> io::Result<()> {
-    buf.write_vectored(&[
-        IoSlice::new(&type_to_tag(IrDataType::CharacterData)),
-        IoSlice::new(&data_address.to_le_bytes()),
-    ])?;
+    buf.write(&data_address.to_le_bytes())?;
     Ok(())
 }
 

@@ -9,12 +9,22 @@ use super::{
 
 pub struct StaticData {
     static_data: Vec<u8>,
-    static_places: Vec<DataAddress>,
+    static_places: Vec<u8>,
 }
 
 pub struct StaticDataBuilder {
     static_data: Vec<u8>,
-    static_places: Vec<DataAddress>,
+    static_places: Vec<u8>,
+}
+
+impl StaticData {
+    pub fn data(&self) -> &[u8] {
+        &self.static_data
+    }
+
+    pub fn places(&self) -> &[u8] {
+        &self.static_places
+    }
 }
 
 impl StaticDataBuilder {
@@ -70,7 +80,7 @@ impl StaticDataBuilder {
 
     pub fn static_place(&mut self, data: DataAddress) -> PlaceAddress {
         let address = self.top_static_place_address();
-        self.static_places.push(data);
+        append_place(&mut self.static_places, data).unwrap();
         address
     }
 

@@ -24,4 +24,8 @@ impl Function {
     pub fn new(name: String, instructions: Vec<Instruction>) -> Self {
         Function { name, instructions }
     }
+
+    pub fn export_name(&self) -> Option<&str> {
+        (self.name.len() == 0).then(|| self.name.as_ref())
+    }
 }

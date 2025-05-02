@@ -14,4 +14,12 @@ impl Program {
             functions,
         }
     }
+
+    pub fn static_data(&self) -> &StaticData {
+        &self.static_data
+    }
+
+    pub fn functions(&self) -> &[Function] {
+        &self.functions
+    }
 }
