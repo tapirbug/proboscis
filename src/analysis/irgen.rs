@@ -48,9 +48,9 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
 
     pub fn generate(analysis: &'a SemanticAnalysis<'s, 't>) -> Result<Program, IrGenError<'s, 't>> {
         let mut generator = Self::new(analysis);
-        //generator.generate_static_data()?;
-        generator.generate_global_variables()?;
-        generator.generate_functions()?;
+        generator.generate_builtin_functions()?;
+        generator.generate_source_global_variables()?;
+        generator.generate_source_functions()?;
         Ok(Program::new(generator.static_data.build(), generator.functions.build()))
     }
 
@@ -88,7 +88,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         })
     }
 
-    pub fn generate_global_variables(&mut self) -> Result<(), IrGenError<'s, 't>> {
+    pub fn generate_source_global_variables(&mut self) -> Result<(), IrGenError<'s, 't>> {
         for global in self.analysis.global_definitions() {
             let name = global.name().fragment(self.source).source();
             let value = global.value();
@@ -99,7 +99,25 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         Ok(())
     }
 
-    fn generate_functions(&mut self)  -> Result<(), IrGenError<'s, 't>> {
+    fn generate_builtin_functions(&mut self) -> Result<(), IrGenError<'s, 't>> {
+        self.generate_builtin_format();
+        Ok(())
+    }
+
+    fn generate_builtin_format(&mut self) {
+        let format_addr = self.functions.add_private_function();
+        self.function_addresses.insert("format".to_string(), format_addr);
+        let working_place = PlaceAddress::new_local(0);
+        self.functions.implement_function(format_addr)
+            .alloc_places(1)
+            .consume_param(working_place) // ignore the t parameter
+            .consume_param(working_place) // this is the format string, which we just print verbatim for now
+            .call_print(working_place)
+            .dealloc_places(1)
+            .add_return(self.nil_place);
+    }
+
+    fn generate_source_functions(&mut self)  -> Result<(), IrGenError<'s, 't>> {
         // first give them all an index
         for function in self.analysis.function_definitions() {
             let name = function.name().fragment(self.source).source();

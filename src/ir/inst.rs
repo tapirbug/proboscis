@@ -11,6 +11,10 @@ pub enum Instruction {
         /// Where to write the return value
         to: PlaceAddress, // could extend here to switch the stack or make it an extra instruction
     },
+    /// Builtin to print a string, with no typechecking.
+    CallPrint {
+        string: PlaceAddress
+    },
     // copies the given place address to the return value and returns from
     // the function
     Return {
@@ -109,6 +113,11 @@ impl InstructionBuilder {
             params,
             to,
         });
+        self
+    }
+
+    pub fn call_print(&mut self, value: PlaceAddress) -> &mut Self {
+        self.instructions.push(Instruction::CallPrint { string: value });
         self
     }
 
