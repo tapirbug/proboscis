@@ -64,8 +64,10 @@ impl<'t, 's> From<NameError<'t, 's>> for CommandError {
     }
 }
 
-impl From<IrGenError> for CommandError {
-    fn from(value: IrGenError) -> Self {
-        match value {}
+impl<'s, 't> From<IrGenError<'s, 't>> for CommandError {
+    fn from(value: IrGenError<'s, 't>) -> Self {
+        CommandError {
+            msg: value.to_string()
+        }
     }
 }

@@ -14,3 +14,5 @@ pub use databuilder::{StaticData, StaticDataBuilder};
 pub use func::{Function, StaticFunctionAddress};
 pub use funcbuilder::FunctionsBuilder;
 pub use program::Program;
+pub use place::PlaceAddress;
+pub use inst::{Instruction, InstructionBuilder};

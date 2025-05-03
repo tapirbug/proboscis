@@ -9,21 +9,15 @@ use super::{
 
 pub struct StaticData {
     static_data: Vec<u8>,
-    static_places: Vec<u8>,
 }
 
 pub struct StaticDataBuilder {
     static_data: Vec<u8>,
-    static_places: Vec<u8>,
 }
 
 impl StaticData {
     pub fn data(&self) -> &[u8] {
         &self.static_data
-    }
-
-    pub fn places(&self) -> &[u8] {
-        &self.static_places
     }
 }
 
@@ -31,7 +25,6 @@ impl StaticDataBuilder {
     pub fn new() -> Self {
         StaticDataBuilder {
             static_data: vec![],
-            static_places: vec![],
         }
     }
 
@@ -40,12 +33,7 @@ impl StaticDataBuilder {
     }
 
     fn top_static_place_address(&self) -> PlaceAddress {
-        PlaceAddress::new_unsafe(
-            self.static_places
-                .iter()
-                .map(|_| mem::size_of::<u32>() as i32)
-                .sum(),
-        )
+        PlaceAddress::new_global(self.static_data.len().try_into().unwrap())
     }
 
     pub fn static_nil(&mut self) -> DataAddress {
@@ -80,7 +68,7 @@ impl StaticDataBuilder {
 
     pub fn static_place(&mut self, data: DataAddress) -> PlaceAddress {
         let address = self.top_static_place_address();
-        append_place(&mut self.static_places, data).unwrap();
+        append_place(&mut self.static_data, data).unwrap();
         address
     }
 
@@ -89,7 +77,6 @@ impl StaticDataBuilder {
     pub fn build(&mut self) -> StaticData {
         StaticData {
             static_data: mem::take(&mut self.static_data),
-            static_places: mem::take(&mut self.static_places),
         }
     }
 }

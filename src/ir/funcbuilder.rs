@@ -31,7 +31,7 @@ impl FunctionsBuilder {
         self.add_function("")
     }
 
-    pub fn implement_private_function(&mut self, address: StaticFunctionAddress) -> &mut InstructionBuilder {
+    pub fn implement_function(&mut self, address: StaticFunctionAddress) -> &mut InstructionBuilder {
         &mut self.function_builders[address.to_i32() as usize]
     }
 

@@ -132,7 +132,7 @@ impl<'s> StringTable<'s> {
     }
 }
 
-fn decode_string(raw: &str) -> Cow<str> {
+pub fn decode_string(raw: &str) -> Cow<str> {
     assert!(raw.len() >= 2);
     assert!(
         raw.as_bytes()[0] == b'"' && raw.as_bytes()[raw.len() - 1] == b'"'

@@ -18,11 +18,7 @@ pub fn write_wat<W: Write>(w: &mut W, program: &Program) -> io::Result<()> {
 
 fn write_static_data<W: Write>(w: &mut W, static_data: &StaticData) -> io::Result<()> {
     let offset_data = 0;
-    //println!("len1 is {}", static_data.data().len());
-    //println!("len2 is {}", static_data.places().len());
     write!(w, "\t(data (i32.const {}) {})\n", offset_data, WebassemblyString(static_data.data()))?;
-    let offset_places = static_data.data().len();
-    write!(w, "\t(data (i32.const {}) {})\n", offset_places, WebassemblyString(static_data.places()))?;
     Ok(())
 }
 
@@ -32,7 +28,7 @@ fn write_function<W: Write>(w: &mut W, function: &Function) -> io::Result<()> {
         write!(w, "(export \"{}\") ", name)?;
     }
     write!(w, "(result i32)\n")?;
-    // TODO instruction
+    // TODO write instruction
     write!(w, "\t)\n")?;
     Ok(())
 }
