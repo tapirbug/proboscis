@@ -8,12 +8,15 @@ use super::err::CommandResult;
 use crate::{
     args::TopLevelArgs,
     cmd::err::CommandError,
-    parse::{Parser, Source},
+    parse::Parser, source::SourceSet,
 };
 
 pub fn parse(args: &TopLevelArgs) -> CommandResult<()> {
-    let sources = Source::load_many(args.files())?;
-    for source in &sources {
+    let mut source_set = SourceSet::new();
+    for file in args.files() {
+        source_set.load(file)?;
+    }
+    for source in source_set.iter() {
         let mut parser = Parser::new(source);
         let ast = parser.parse()?;
         match args.output_path() {
@@ -24,7 +27,7 @@ pub fn parse(args: &TopLevelArgs) -> CommandResult<()> {
             }
             // write to stdout with some extra decoration on stderr
             None => {
-                eprintln!("file {} is valid.", source.path().display());
+                eprintln!("file {} is valid.", source.path().unwrap().display());
                 eprintln!("AST:");
                 println!("{:#?}", ast)
             }

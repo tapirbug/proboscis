@@ -1,7 +1,4 @@
-use super::{
-    frag::{Fragment, SourceRange},
-    source::Source,
-};
+use crate::source::{Fragment, Source, SourceRange};
 
 #[derive(Clone, Debug)]
 pub struct Token<'s> {
@@ -14,7 +11,7 @@ impl<'s> Token<'s> {
         Token { range, kind }
     }
 
-    pub fn fragment<'a>(&'a self, source: &'s Source) -> Fragment<'s> {
+    pub fn fragment<'a>(&'a self, source: Source<'s>) -> Fragment<'s> {
         self.range.of(source)
     }
 

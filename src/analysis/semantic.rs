@@ -1,11 +1,13 @@
 use std::fmt;
 
-use crate::parse::{AstNode, Source};
+use crate::parse::{AstNode};
+
+use crate::source::Source;
 
 use super::{FunctionDefinition, FunctionDefinitionError, GlobalDefinition, GlobalDefinitionError, NameCheck, NameError, StringTable};
 
 pub struct SemanticAnalysis<'s, 't> {
-    source: &'s Source,
+    source: Source<'s>,
     root_code: Vec<&'t AstNode<'s>>,
     function_definitions: Vec<FunctionDefinition<'t, 's>>,
     global_definitions: Vec<GlobalDefinition<'t, 's>>,
@@ -15,7 +17,7 @@ pub struct SemanticAnalysis<'s, 't> {
 impl<'t, 's> SemanticAnalysis<'t, 's> {
     /// Semantically analyses a single source file and returns the result of
     /// analysis if it appears to be valid.
-    pub fn analyze(source: &'s Source, ast: &'t [AstNode<'s>]) -> Result<SemanticAnalysis<'s, 't>, SemanticAnalysisError<'s, 't>> {
+    pub fn analyze(source: Source<'s>, ast: &'t [AstNode<'s>]) -> Result<SemanticAnalysis<'s, 't>, SemanticAnalysisError<'s, 't>> {
         let strings = StringTable::analyze(source, &ast);
         // TODO find constant numbers too
 
@@ -52,7 +54,7 @@ impl<'t, 's> SemanticAnalysis<'t, 's> {
 }
 
 impl<'t, 's> SemanticAnalysis<'t, 's> {
-    pub fn source(&self) -> &'s Source {
+    pub fn source(&self) -> Source<'s> {
         self.source
     }
 

@@ -1,19 +1,17 @@
 use std::fmt;
 
-use crate::parse::frag;
+use crate::source::{Fragment, Source, SourceRange};
 
-use super::frag::{Fragment, SourceRange};
-use super::source::{self, Source};
 use super::stream::TokenStream;
 use super::token::{Token, TokenKind};
 
 pub struct Lexer<'s> {
-    source: &'s Source,
+    source: Source<'s>,
     position: usize,
 }
 
 impl<'s> Lexer<'s> {
-    pub fn new(source: &'s Source) -> Self {
+    pub fn new(source: Source<'s>) -> Self {
         Self {
             source,
             position: 0,
@@ -40,7 +38,7 @@ impl<'s> Lexer<'s> {
 
 impl<'s> TokenStream<'s> for Lexer<'s> {
     fn next<'l>(&'l mut self) -> Option<Result<Token<'s>, LexerError<'s>>> {
-        let rest = &self.source.as_ref()[self.position..];
+        let rest = &self.source.as_str()[self.position..];
         if rest.is_empty() {
             return None;
         }
@@ -165,8 +163,8 @@ impl<'s> TokenStream<'s> for Lexer<'s> {
         })
     }
 
-    fn source<'l>(&'l self) -> &'s Source {
-        &self.source
+    fn source<'l>(&'l self) -> Source<'s> {
+        self.source
     }
 }
 
@@ -209,11 +207,14 @@ impl<'s> fmt::Display for LexerError<'s> {
 
 #[cfg(test)]
 mod test {
+    use crate::source::SourceSet;
+
     use super::*;
 
     #[test]
     fn unrecognized() {
-        let source = &Source::new("\0asdf");
+        let source_set = SourceSet::new_debug("\0asdf");
+        let source = source_set.one();
         let mut lexer = Lexer::new(source);
         let is_unrecognized_char_for_nul =
             match lexer.next().unwrap().unwrap_err() {
@@ -232,7 +233,9 @@ mod test {
 
     #[test]
     fn ints() {
-        let source = &Source::new("12 34");
+        let source_set = SourceSet::new_debug("12 34");
+        let source = source_set.one();
+        assert_eq!(source.as_str(), "12 34");
         let mut lexer = Lexer::new(source);
         let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::IntLit));
@@ -249,7 +252,8 @@ mod test {
 
     #[test]
     fn positive_ints() {
-        let source = &Source::new("+12 +34");
+        let source_set = SourceSet::new_debug("+12 +34");
+        let source = source_set.one();
         let mut lexer = Lexer::new(source);
         let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::IntLit));
@@ -266,7 +270,8 @@ mod test {
 
     #[test]
     fn negative_ints() {
-        let source = &Source::new("-12 -34");
+        let source_set = SourceSet::new_debug("-12 -34");
+        let source = source_set.one();
         let mut lexer = Lexer::new(source);
         let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::IntLit));
@@ -283,7 +288,8 @@ mod test {
 
     #[test]
     fn sum() {
-        let source = &Source::new("(+ 12\t34)");
+        let source_set = SourceSet::new_debug("(+ 12\t34)");
+        let source = source_set.one();
         let mut lexer = Lexer::new(source);
         let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::LeftParen));
@@ -316,7 +322,8 @@ mod test {
 
     #[test]
     fn floats() {
-        let source = &Source::new(".1 0.1 0.");
+        let source_set = SourceSet::new_debug(".1 0.1 0.");
+        let source = source_set.one();
 
         let mut lexer = Lexer::new(source);
 
@@ -343,7 +350,8 @@ mod test {
 
     #[test]
     fn positive_floats() {
-        let source = &Source::new("+0.1 +0.");
+        let source_set = SourceSet::new_debug("+0.1 +0.");
+        let source = source_set.one();
 
         let mut lexer = Lexer::new(source);
 
@@ -362,7 +370,8 @@ mod test {
 
     #[test]
     fn negative_floats() {
-        let source = &Source::new("-0.1 -0.");
+        let source_set = SourceSet::new_debug("-0.1 -0.");
+        let source = source_set.one();
 
         let mut lexer = Lexer::new(source);
 
@@ -381,7 +390,8 @@ mod test {
 
     #[test]
     fn dot_as_ident_then_num() {
-        let source = &Source::new(". 0");
+        let source_set = SourceSet::new_debug(". 0");
+        let source = source_set.one();
 
         let mut lexer = Lexer::new(source);
 
@@ -400,7 +410,8 @@ mod test {
 
     #[test]
     fn idents() {
-        let source = &Source::new("sum product _ *");
+        let source_set = SourceSet::new_debug("sum product _ *");
+        let source = source_set.one();
 
         let mut lexer = Lexer::new(source);
 
@@ -435,7 +446,8 @@ mod test {
 
     #[test]
     fn unterminated_empty_string() {
-        let source = &Source::new("\"");
+        let source_set = SourceSet::new_debug("\"");
+        let source = source_set.one();
 
         let mut lexer = Lexer::new(source);
         let is_unterminated_string_lit_error =
@@ -453,7 +465,8 @@ mod test {
 
     #[test]
     fn unterminated_string() {
-        let source = &Source::new("\"asdf");
+        let source_set = SourceSet::new_debug("\"asdf");
+        let source = source_set.one();
 
         let mut lexer = Lexer::new(source);
         let is_unterminated_string_lit_error =
@@ -472,7 +485,8 @@ mod test {
 
     #[test]
     fn strings() {
-        let source = &Source::new("\"\" \"\\\\\" \"\\a\"");
+        let source_set = SourceSet::new_debug("\"\" \"\\\\\" \"\\a\"");
+        let source = source_set.one();
 
         let mut lexer = Lexer::new(source);
 
@@ -499,7 +513,8 @@ mod test {
 
     #[test]
     fn unterminated_variable() {
-        let source = &Source::new("*asdf");
+        let source_set = SourceSet::new_debug("*asdf");
+        let source = source_set.one();
 
         let mut lexer = Lexer::new(source);
         let token = lexer.next().unwrap().unwrap();
@@ -510,7 +525,8 @@ mod test {
 
     #[test]
     fn variables() {
-        let source = &Source::new("** *\\\\* *\\a*");
+        let source_set = SourceSet::new_debug("** *\\\\* *\\a*");
+        let source = source_set.one();
 
         let mut lexer = Lexer::new(source);
 
@@ -537,21 +553,22 @@ mod test {
 
     #[test]
     fn comment_only() {
-        let source = &Source::new("; this is a comment");
+        let source_set = SourceSet::new_debug("; this is a comment");
+        let source = source_set.one();
 
         let mut lexer = Lexer::new(source);
 
         let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Comment));
-        assert_eq!(token.fragment(source).source(), source.as_ref());
+        assert_eq!(token.fragment(source).source(), source.as_str());
 
         assert!(lexer.next().is_none());
     }
 
     #[test]
     fn comment_after() {
-        let source =
-            &Source::new("1; this is a comment\n \"asdf\" ; another one\n");
+        let source_set = SourceSet::new_debug("1; this is a comment\n \"asdf\" ; another one\n");
+        let source = source_set.one();
 
         let mut lexer = Lexer::new(source);
 
@@ -588,8 +605,8 @@ mod test {
 
     #[test]
     fn lex_remove_if_not() {
-        let source =
-            &Source::new("(remove-if-not (lambda (x) (< x 5)) '(0 10))");
+        let source_set = SourceSet::new_debug("(remove-if-not (lambda (x) (< x 5)) '(0 10))");
+        let source = source_set.one();
 
         let mut lexer = Lexer::new(source);
 

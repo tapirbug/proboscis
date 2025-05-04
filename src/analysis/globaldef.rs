@@ -1,16 +1,18 @@
 use std::fmt;
 
-use crate::parse::{AstNode, Atom, Source, TokenKind};
+use crate::parse::{AstNode, Atom, TokenKind};
+
+use crate::source::Source;
 
 pub struct GlobalDefinition<'s, 't> {
-    source: &'s Source,
+    source: Source<'s>,
     name: &'t Atom<'s>,
     value: &'t AstNode<'s>,
 }
 
 impl<'s, 't> GlobalDefinition<'s, 't> {
     pub fn extract(
-        source: &'s Source,
+        source: Source<'s>,
         node: &'t AstNode<'s>,
     ) -> Result<Option<GlobalDefinition<'s, 't>>, GlobalDefinitionError<'s, 't>>
     {
@@ -77,7 +79,7 @@ impl<'s, 't> GlobalDefinition<'s, 't> {
         }))
     }
 
-    pub fn source(&self) -> &'s Source {
+    pub fn source(&self) -> Source<'s> {
         self.source
     }
 
@@ -93,19 +95,19 @@ impl<'s, 't> GlobalDefinition<'s, 't> {
 #[derive(Debug)]
 pub enum GlobalDefinitionError<'s, 't> {
     MissingName {
-        source: &'s Source,
+        source: Source<'s>,
         node: &'t AstNode<'s>,
     },
     MalformedName {
-        source: &'s Source,
+        source: Source<'s>,
         node: &'t AstNode<'s>,
     },
     MissingValue {
-        source: &'s Source,
+        source: Source<'s>,
         node: &'t AstNode<'s>,
     },
     SuperfluousValue {
-        source: &'s Source,
+        source: Source<'s>,
         node: &'t AstNode<'s>,
     },
 }
@@ -115,22 +117,22 @@ impl<'s, 't> fmt::Display for GlobalDefinitionError<'s, 't> {
         match self {
             GlobalDefinitionError::MissingName { source, node } => {
                 writeln!(f, "global definition is lacking a name:")?;
-                writeln!(f, "{}", node.fragment(source).source_context())
+                writeln!(f, "{}", node.fragment(*source).source_context())
             }
             GlobalDefinitionError::MalformedName { source, node } => {
                 writeln!(f, "not a valid global name:")?;
-                writeln!(f, "{}", node.fragment(source).source_context())
+                writeln!(f, "{}", node.fragment(*source).source_context())
             }
             GlobalDefinitionError::MissingValue { source, node } => {
                 writeln!(f, "global definition is lacking an initial value:")?;
-                writeln!(f, "{}", node.fragment(source).source_context())
+                writeln!(f, "{}", node.fragment(*source).source_context())
             }
             GlobalDefinitionError::SuperfluousValue { source, node } => {
                 writeln!(
                     f,
                     "found superfluous values in global definition after the initial value:"
                 )?;
-                writeln!(f, "{}", node.fragment(source).source_context())
+                writeln!(f, "{}", node.fragment(*source).source_context())
             }
         }
     }
@@ -138,16 +140,15 @@ impl<'s, 't> fmt::Display for GlobalDefinitionError<'s, 't> {
 
 #[cfg(test)]
 mod test {
-    use crate::parse::Parser;
+    use crate::{parse::Parser, source::SourceSet};
 
     use super::*;
 
     #[test]
     fn extract_global() {
-        let source = &Source::new(
-            "(defparameter *list* '(1 2 3 4))
-(format t \"Max of ~a is ~a\" *list* (maximum *list*))",
-        );
+        let source_set = SourceSet::new_debug("(defparameter *list* '(1 2 3 4))
+(format t \"Max of ~a is ~a\" *list* (maximum *list*))");
+        let source = source_set.one();
         let ast = Parser::new(source).parse().unwrap();
         let definition =
             GlobalDefinition::extract(source, &ast[0]).unwrap().unwrap();

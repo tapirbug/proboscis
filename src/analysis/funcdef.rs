@@ -1,9 +1,10 @@
 use std::fmt;
 
-use crate::parse::{AstNode, Atom, List, Source, TokenKind};
+use crate::parse::{AstNode, Atom, List, TokenKind};
+use crate::source::Source;
 
 pub struct FunctionDefinition<'s, 't> {
-    source: &'s Source,
+    source: Source<'s>,
     name: &'t Atom<'s>,
     args: &'t List<'s>,
     doc_string: Option<&'t Atom<'s>>,
@@ -19,7 +20,7 @@ impl<'s, 't> FunctionDefinition<'s, 't> {
     ///
     /// Ok(Some) is the case when it's actually a function definition.
     pub fn extract(
-        source: &'s Source,
+        source: Source<'s>,
         node: &'t AstNode<'s>,
     ) -> Result<
         Option<FunctionDefinition<'s, 't>>,
@@ -113,7 +114,7 @@ impl<'s, 't> FunctionDefinition<'s, 't> {
         }))
     }
 
-    pub fn source(&self) -> &'s Source {
+    pub fn source(&self) -> Source<'s> {
         self.source
     }
 
@@ -137,19 +138,19 @@ impl<'s, 't> FunctionDefinition<'s, 't> {
 #[derive(Debug)]
 pub enum FunctionDefinitionError<'s, 't> {
     MissingName {
-        source: &'s Source,
+        source: Source<'s>,
         node: &'t AstNode<'s>,
     },
     MissingParams {
-        source: &'s Source,
+        source: Source<'s>,
         node: &'t AstNode<'s>,
     },
     MalformedName {
-        source: &'s Source,
+        source: Source<'s>,
         node: &'t AstNode<'s>,
     },
     MalformedParams {
-        source: &'s Source,
+        source: Source<'s>,
         node: &'t AstNode<'s>,
     },
 }
@@ -159,22 +160,22 @@ impl<'s, 't> fmt::Display for FunctionDefinitionError<'s, 't> {
         match self {
             FunctionDefinitionError::MissingName { source, node } => {
                 writeln!(f, "function definition is lacking a name:")?;
-                writeln!(f, "{}", node.fragment(source).source_context())
+                writeln!(f, "{}", node.fragment(*source).source_context())
             }
             FunctionDefinitionError::MalformedName { source, node } => {
                 writeln!(f, "not a valid function name:")?;
-                writeln!(f, "{}", node.fragment(source).source_context())
+                writeln!(f, "{}", node.fragment(*source).source_context())
             }
             FunctionDefinitionError::MissingParams { source, node } => {
                 writeln!(
                     f,
                     "function definition is lacking the parameter list:"
                 )?;
-                writeln!(f, "{}", node.fragment(source).source_context())
+                writeln!(f, "{}", node.fragment(*source).source_context())
             }
             FunctionDefinitionError::MalformedParams { source, node } => {
                 writeln!(f, "not a valid function parameter list:")?;
-                writeln!(f, "{}", node.fragment(source).source_context())
+                writeln!(f, "{}", node.fragment(*source).source_context())
             }
         }
     }
@@ -182,14 +183,13 @@ impl<'s, 't> fmt::Display for FunctionDefinitionError<'s, 't> {
 
 #[cfg(test)]
 mod test {
-    use crate::parse::Parser;
+    use crate::{parse::Parser, source::SourceSet};
 
     use super::*;
 
     #[test]
     fn two_fn_defs() {
-        let source = &Source::new(
-            "
+        let source_set = SourceSet::new_debug("
 (defun max-2 (one two)
     (if (> one two) one two))
 
@@ -198,8 +198,8 @@ mod test {
         acc
         (max-inner
             (max-2 acc (car rest))
-            (cdr rest))))",
-        );
+            (cdr rest))))");
+        let source = source_set.one();
         let ast = Parser::new(source).parse().unwrap();
 
         let definition = FunctionDefinition::extract(source, &ast[0])

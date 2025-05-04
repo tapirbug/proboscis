@@ -5,13 +5,13 @@ use crate::parse::{ast::Atom, token::TokenKind};
 use super::{
     ahead::LookaheadStream,
     ast::{AstNode, List, QuotedList},
-    frag::SourceRange,
     ignore::Ignore,
     lexer::{Lexer, LexerError},
-    source::Source,
     stream::TokenStream as _,
     token::Token,
 };
+
+use crate::source::{SourceRange, Source};
 
 type InnerStream<'s> = LookaheadStream<'s, Ignore<Lexer<'s>, 2>, 1>;
 
@@ -20,7 +20,7 @@ pub struct Parser<'s> {
 }
 
 impl<'s> Parser<'s> {
-    pub fn new(source: &'s Source) -> Self {
+    pub fn new(source: Source<'s>) -> Self {
         Self {
             lexer: LookaheadStream::new(Ignore::new(
                 Lexer::new(source),
@@ -177,19 +177,19 @@ pub enum ParserErrorDetails<'s> {
 
 #[derive(Debug)]
 pub struct ParserError<'s> {
-    source: &'s Source,
+    source: Source<'s>,
     details: ParserErrorDetails<'s>,
 }
 
 impl<'s> ParserError<'s> {
-    pub fn lexer_error(source: &'s Source, error: LexerError<'s>) -> Self {
+    pub fn lexer_error(source: Source<'s>, error: LexerError<'s>) -> Self {
         Self {
             source,
             details: ParserErrorDetails::LexerError { error },
         }
     }
 
-    pub fn mismatched_token(source: &'s Source, token: Token<'s>) -> Self {
+    pub fn mismatched_token(source: Source<'s>, token: Token<'s>) -> Self {
         Self {
             source,
             details: ParserErrorDetails::MismatchedToken { token },
@@ -197,7 +197,7 @@ impl<'s> ParserError<'s> {
     }
 
     pub fn unbalanced_parenthesis(
-        source: &'s Source,
+        source: Source<'s>,
         opening: Token<'s>,
     ) -> Self {
         Self {
@@ -206,7 +206,7 @@ impl<'s> ParserError<'s> {
         }
     }
 
-    pub fn unexpected_end(source: &'s Source) -> Self {
+    pub fn unexpected_end(source: Source<'s>) -> Self {
         Self {
             source,
             details: ParserErrorDetails::UnexpectedEnd,
@@ -254,12 +254,15 @@ impl<'s> fmt::Display for ParserError<'s> {
 
 #[cfg(test)]
 mod test {
+    use crate::source::SourceSet;
+
     use super::*;
 
     #[test]
     fn number() {
-        let source = Source::new("42");
-        let mut parser = Parser::new(&source);
+        let source_set = SourceSet::new_debug("42");
+        let source = source_set.one();
+        let mut parser = Parser::new(source);
         let node = parser.parse_one().unwrap();
         let node = node.atom().unwrap();
         assert!(matches!(node.token().kind(), TokenKind::IntLit));
@@ -267,51 +270,54 @@ mod test {
 
     #[test]
     fn empty_list() {
-        let source = Source::new("()");
-        let mut parser = Parser::new(&source);
+        let source_set = SourceSet::new_debug("()");
+        let source = source_set.one();
+        let mut parser = Parser::new(source);
         let node = parser.parse().unwrap().into_iter().next().unwrap();
         let node = node.list().unwrap();
-        assert_eq!(node.source_range().of(&source).source(), "()");
+        assert_eq!(node.source_range().of(source).source(), "()");
     }
 
     #[test]
     fn one_int_list() {
-        let source = Source::new("( 42)");
-        let mut parser = Parser::new(&source);
+        let source_set = SourceSet::new_debug("( 42)");
+        let source = source_set.one();
+        let mut parser = Parser::new(source);
         let node = parser.parse().unwrap().into_iter().next().unwrap();
         let node = node.list().unwrap();
-        assert_eq!(node.source_range().of(&source).source(), "( 42)");
+        assert_eq!(node.source_range().of(source).source(), "( 42)");
         let elements = node.elements();
         assert_eq!(elements.len(), 1);
-        let el = elements[0].source_range().of(&source);
+        let el = elements[0].source_range().of(source);
         let el = el.source();
         assert_eq!(el, "42")
     }
 
     #[test]
     fn two_ints_list_list() {
-        let source = Source::new("( ( 42 128)\t)");
-        let mut parser = Parser::new(&source);
+        let source_set = SourceSet::new_debug("( ( 42 128)\t)");
+        let source = source_set.one();
+        let mut parser = Parser::new(source);
         let node = parser.parse().unwrap().into_iter().next().unwrap();
         let node = node.list().unwrap();
-        assert_eq!(node.source_range().of(&source).source(), "( ( 42 128)\t)");
+        assert_eq!(node.source_range().of(source).source(), "( ( 42 128)\t)");
         let elements = node.elements();
         assert_eq!(elements.len(), 1);
         let node = elements[0].list().unwrap();
-        assert_eq!(node.source_range().of(&source).source(), "( 42 128)");
+        assert_eq!(node.source_range().of(source).source(), "( 42 128)");
         let elements = node.elements();
         assert_eq!(elements.len(), 2);
         let int0 = elements[0].atom().unwrap();
         let int1 = elements[1].atom().unwrap();
-        assert_eq!(int0.source_range().of(&source).source(), "42");
-        assert_eq!(int1.source_range().of(&source).source(), "128");
+        assert_eq!(int0.source_range().of(source).source(), "42");
+        assert_eq!(int1.source_range().of(source).source(), "128");
     }
 
     #[test]
     fn parse_remove_if_not() {
-        let source =
-            Source::new("(remove-if-not (lambda (x) (< x 5)) '(0 10))");
-        let mut parser = Parser::new(&source);
+        let source_set = SourceSet::new_debug("(remove-if-not (lambda (x) (< x 5)) '(0 10))");
+        let source = source_set.one();
+        let mut parser = Parser::new(source);
         let remove = parser.parse().unwrap().into_iter().next().unwrap();
         let remove = remove.list().unwrap();
         let remove = remove.elements();
@@ -321,7 +327,7 @@ mod test {
                 .atom()
                 .unwrap()
                 .source_range()
-                .of(&source)
+                .of(source)
                 .source(),
             "remove-if-not"
         );
@@ -334,7 +340,7 @@ mod test {
                 .atom()
                 .unwrap()
                 .source_range()
-                .of(&source)
+                .of(source)
                 .source(),
             "lambda"
         );
@@ -347,7 +353,7 @@ mod test {
                 .atom()
                 .unwrap()
                 .source_range()
-                .of(&source)
+                .of(source)
                 .source(),
             "x"
         );
@@ -355,21 +361,21 @@ mod test {
         let lt = lambda[2].list().unwrap();
         let lt = lt.elements();
         assert_eq!(
-            lt[0].atom().unwrap().source_range().of(&source).source(),
+            lt[0].atom().unwrap().source_range().of(source).source(),
             "<"
         );
         assert_eq!(
-            lt[1].atom().unwrap().source_range().of(&source).source(),
+            lt[1].atom().unwrap().source_range().of(source).source(),
             "x"
         );
         assert_eq!(
-            lt[2].atom().unwrap().source_range().of(&source).source(),
+            lt[2].atom().unwrap().source_range().of(source).source(),
             "5"
         );
 
-        let quoted_list = dbg!(&remove[2]).quoted_list().unwrap();
-        assert_eq!(quoted_list.source_range().of(&source).source(), "'(0 10)");
-        assert_eq!(remove[2].source_range().of(&source).source(), "'(0 10)");
+        let quoted_list = &remove[2].quoted_list().unwrap();
+        assert_eq!(quoted_list.source_range().of(source).source(), "'(0 10)");
+        assert_eq!(remove[2].source_range().of(source).source(), "'(0 10)");
 
         let quoted_list = quoted_list.elements();
         assert_eq!(quoted_list.len(), 2);
@@ -378,7 +384,7 @@ mod test {
                 .atom()
                 .unwrap()
                 .source_range()
-                .of(&source)
+                .of(source)
                 .source(),
             "0"
         );
@@ -387,7 +393,7 @@ mod test {
                 .atom()
                 .unwrap()
                 .source_range()
-                .of(&source)
+                .of(source)
                 .source(),
             "10"
         );
@@ -395,8 +401,8 @@ mod test {
 
     #[test]
     fn parse_two_lists() {
-        let source =
-            &Source::new("(defparameter *x* 1)\n(defparameter *y* 2)\n");
+        let source_set = SourceSet::new_debug("(defparameter *x* 1)\n(defparameter *y* 2)\n");
+        let source = source_set.one();
 
         let mut parser = Parser::new(source);
         let two = parser.parse().unwrap();

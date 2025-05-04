@@ -6,15 +6,18 @@ use crate::{
     },
     args::{OutputFormat, TopLevelArgs},
     codegen::write_wat,
-    parse::{Parser, Source},
+    parse::Parser, source::{Source, SourceSet},
 };
 
 use super::err::CommandResult;
 
 pub fn compile(args: &TopLevelArgs) -> CommandResult<()> {
     assert!(matches!(args.output_format(), OutputFormat::Wat));
-    let sources = Source::load_many(args.files())?;
-    for source in &sources {
+    let mut sources = SourceSet::new();
+    for file in args.files() {
+        sources.load(file)?;
+    }
+    for source in sources.iter() {
         let ast = Parser::new(source).parse()?;
         
         let analysis = SemanticAnalysis::analyze(source, &ast)?;

@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::parse::{AstNode, Atom, List, Source, TokenKind};
+use crate::{parse::{AstNode, Atom, List, TokenKind}, source::Source};
 
 use super::{semantic::SemanticAnalysis, FunctionDefinition, GlobalDefinition};
 
@@ -13,7 +13,7 @@ const GLOBAL_VARS: &[&str] = &["nil", "t"];
 /// Checks that all names in an AST node refer to defined functions or
 /// variables, depending on context.
 pub struct NameCheck<'t, 's> {
-    source: &'s Source,
+    source: Source<'s>,
     functions: &'t [FunctionDefinition<'t, 's>],
     globals: &'t [GlobalDefinition<'t, 's>],
     /// Variables from lexical scope
@@ -175,15 +175,15 @@ impl<'t, 's> NameCheck<'t, 's> {
 #[derive(Debug)]
 pub enum NameError<'s, 't> {
     UndefinedFunctionName {
-        source: &'s Source,
+        source: Source<'s>,
         name: &'t Atom<'s>,
     },
     UndefinedVariableName {
-        source: &'s Source,
+        source: Source<'s>,
         name: &'t Atom<'s>,
     },
     MalformedFunctionName {
-        source: &'s Source,
+        source: Source<'s>,
         name: &'t AstNode<'s>,
     },
 }
@@ -195,21 +195,21 @@ impl<'s, 't> fmt::Display for NameError<'s, 't> {
                 writeln!(
                     f,
                     "reference to undefined function `{}`:",
-                    name.source_range().of(source).source()
+                    name.source_range().of(*source).source()
                 )?;
-                writeln!(f, "{}", name.fragment(source).source_context())
+                writeln!(f, "{}", name.fragment(*source).source_context())
             }
             NameError::MalformedFunctionName { source, name } => {
                 writeln!(f, "expected a function name here:")?;
-                writeln!(f, "{}", name.fragment(source).source_context())
+                writeln!(f, "{}", name.fragment(*source).source_context())
             }
             NameError::UndefinedVariableName { source, name } => {
                 writeln!(
                     f,
                     "reference to undefined place `{}`:",
-                    name.source_range().of(source).source()
+                    name.source_range().of(*source).source()
                 )?;
-                writeln!(f, "{}", name.fragment(source).source_context())
+                writeln!(f, "{}", name.fragment(*source).source_context())
             }
         }
     }

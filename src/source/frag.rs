@@ -1,12 +1,12 @@
 use std::{fmt, marker::PhantomData, ptr};
 
-use super::source::Source;
+use super::sourceset::Source;
 
 /// A non-empty portion of source code.
 #[derive(Copy, Clone)]
 pub struct Fragment<'s> {
     /// Full source code into which from and to index to locate this fragment.
-    source: &'s Source,
+    source: Source<'s>,
     /// Location and length of the fragment in the source code.
     range: SourceRange<'s>,
 }
@@ -21,7 +21,7 @@ pub struct SourceRange<'s> {
     /// Marker to tell the typesystem that the type system that the validity
     /// of indexes depends on a reference to immutable string data that must
     /// not be changed as long as this source range exists.
-    _lifetime: PhantomData<&'s Source>,
+    _lifetime: PhantomData<Source<'s>>,
 }
 
 /// A nice way of displaying context for a fragment.
@@ -39,13 +39,13 @@ pub struct SourceLocation {
 }
 
 impl<'s> Fragment<'s> {
-    pub fn new(source: &'s Source, from: usize, to: usize) -> Self {
+    pub fn new(source: Source<'s>, from: usize, to: usize) -> Self {
         SourceRange::new(from, to).of(source)
     }
 
     pub fn union<I: IntoIterator<Item = Self>>(fragments: I) -> Option<Self> {
         fragments.into_iter().reduce(|left, right| {
-            assert!(ptr::eq(left.source, right.source)); // OPTIMIZE this should be compared by pointer
+            assert_eq!(left.source, right.source);
             Self {
                 source: left.source,
                 range: SourceRange::new(
@@ -65,17 +65,17 @@ impl<'s> Fragment<'s> {
 
     /// The characters that make up the source code of this fragment.
     pub fn source(self) -> &'s str {
-        &self.source.as_ref()[self.range.from..self.range.to]
+        &self.source.as_str()[self.range.from..self.range.to]
     }
 
     /// All characters before the fragment.
     pub fn source_before(self) -> &'s str {
-        &self.source.as_ref()[..self.range.from]
+        &self.source.as_str()[..self.range.from]
     }
 
     /// All characters after the fragment.
     pub fn source_after(self) -> &'s str {
-        &self.source.as_ref()[self.range.to..]
+        &self.source.as_str()[self.range.to..]
     }
 
     /// A nice way of displaying context about the fragment.
@@ -84,7 +84,7 @@ impl<'s> Fragment<'s> {
     }
 
     pub fn first_line(self) -> &'s str {
-        let src = self.source.as_ref();
+        let src = self.source.as_str();
         let line_from_idx = line_start_before(src, self.range.from);
         let line_to_idx = line_end_after_or_eq(src, self.range.from);
         &src[line_from_idx..line_to_idx]
@@ -96,7 +96,7 @@ impl<'s> Fragment<'s> {
     /// The final newlines is always excluded, while interior newlines are
     /// preserved.
     pub fn all_lines(self) -> &'s str {
-        let src = self.source.as_ref();
+        let src = self.source.as_str();
         let line_from_idx = line_start_before(src, self.range.from);
         let line_to_idx = line_end_after_or_eq(src, self.range.to);
         &src[line_from_idx..line_to_idx]
@@ -109,7 +109,7 @@ impl<'s> Fragment<'s> {
     pub fn to_position(self) -> SourceLocation {
         // same as SourcePosition::START.advance(self.source_before()).advance(self.source())
         // or self.from_position().advance(self.source())
-        SourceLocation::START.advance(&self.source.as_ref()[..self.range.to])
+        SourceLocation::START.advance(&self.source.as_str()[..self.range.to])
     }
     pub fn from_to_positions(self) -> (SourceLocation, SourceLocation) {
         let from = self.from_position();
@@ -218,16 +218,16 @@ impl<'s> SourceRange<'s> {
         ranges.into_iter().reduce(Self::union_two)
     }
 
-    pub fn of(self, source: &'s Source) -> Fragment<'s> {
+    pub fn of(self, source: Source<'s>) -> Fragment<'s> {
         let Self { from, to, .. } = self;
-        let len = source.len();
+        let source_len = source.as_str().len();
         assert!(
-            from <= len,
-            "Source range from={from} would be out of bounds for len={len}"
+            from <= source_len,
+            "Source range from={from} would be out of bounds for len={source_len}"
         );
         assert!(
-            to <= len,
-            "Source range to={to} would be out of bounds for len={len}"
+            to <= source_len,
+            "Source range to={to} would be out of bounds for len={source_len}"
         );
         Fragment {
             source,
@@ -307,6 +307,8 @@ impl fmt::Display for SourceLocation {
 
 #[cfg(test)]
 mod test {
+    use crate::source::SourceSet;
+
     use super::*;
     use std::iter::{empty, once};
     use std::ptr;
@@ -314,19 +316,25 @@ mod test {
     #[should_panic]
     #[test]
     fn out_of_bounds_new() {
-        Fragment::new(&Source::new("a"), 1, 2);
+        let set = SourceSet::new_debug("a");
+        let source = set.iter().next().unwrap();
+        Fragment::new(source, 1, 2);
     }
 
     #[should_panic]
     #[test]
     fn to_lt_from_new() {
-        Fragment::new(&Source::new("a"), 1, 0);
+        let set = SourceSet::new_debug("a");
+        let source = set.iter().next().unwrap();
+        Fragment::new(source, 1, 0);
     }
 
     #[should_panic]
     #[test]
     fn empty_new() {
-        Fragment::new(&Source::new("a"), 1, 1);
+        let set = SourceSet::new_debug("a");
+        let source = set.iter().next().unwrap();
+        Fragment::new(source, 1, 1);
     }
 
     #[test]
@@ -338,46 +346,50 @@ mod test {
 
     #[test]
     fn union_one() {
-        let source = Source::new("asdf");
-        let positions = once(Fragment::new(&source, 0, 4));
+        let set = SourceSet::new_debug("asdf");
+        let source = set.iter().next().unwrap();
+        let positions = once(Fragment::new(source, 0, 4));
         let result = Fragment::union(positions)
             .expect("expected union of one to have a result");
-        assert!(ptr::eq(result.source, &source));
+        assert_eq!(result.source, source);
         assert_eq!(result.range.from, 0);
         assert_eq!(result.range.to, 4);
     }
 
     #[test]
     fn union_two_array() {
-        let source = Source::new("asdf");
+        let set = SourceSet::new_debug("asdf");
+        let source = set.iter().next().unwrap();
         let positions: [Fragment<'_>; 2] =
-            [Fragment::new(&source, 0, 1), Fragment::new(&source, 1, 3)];
+            [Fragment::new(source, 0, 1), Fragment::new(source, 1, 3)];
         let result = Fragment::union(positions)
             .expect("expected union of two to have a result");
-        assert!(ptr::eq(result.source, &source));
+        assert_eq!(result.source, source);
         assert_eq!(result.range.from, 0);
         assert_eq!(result.range.to, 3);
     }
 
     #[test]
     fn union_three_vec() {
-        let source = Source::new("asdf");
+        let set = SourceSet::new_debug("asdf");
+        let source = set.iter().next().unwrap();
         let positions = vec![
-            Fragment::new(&source, 2, 4),
-            Fragment::new(&source, 1, 2),
-            Fragment::new(&source, 2, 3),
+            Fragment::new(source, 2, 4),
+            Fragment::new(source, 1, 2),
+            Fragment::new(source, 2, 3),
         ];
         let result = Fragment::union(positions)
             .expect("expected union of two to have a result");
-        assert!(ptr::eq(result.source, &source));
+        assert_eq!(result.source, source);
         assert_eq!(result.range.from, 1);
         assert_eq!(result.range.to, 4);
     }
 
     #[test]
     fn source_accessors() {
-        let source = Source::new("a = 1");
-        let fragment = Fragment::new(&source, 2, 3);
+        let set = SourceSet::new_debug("a = 1");
+        let source = set.iter().next().unwrap();
+        let fragment = Fragment::new(source, 2, 3);
         assert_eq!(fragment.source_before(), "a ");
         assert_eq!(fragment.source(), "=");
         assert_eq!(fragment.source_after(), " 1");
@@ -385,16 +397,18 @@ mod test {
 
     #[test]
     fn char_count() {
-        let source = Source::new("你好");
-        let fragment = Fragment::new(&source, 0, "你好".len());
+        let set = SourceSet::new_debug("你好");
+        let source = set.iter().next().unwrap();
+        let fragment = Fragment::new(source, 0, "你好".len());
         let char_count = fragment.char_count();
         assert_eq!(char_count, 2);
     }
 
     #[test]
     fn fragment_positions_line_1() {
-        let source = Source::new("a = 1");
-        let fragment = Fragment::new(&source, 2, 3);
+        let set = SourceSet::new_debug("a = 1");
+        let source = set.iter().next().unwrap();
+        let fragment = Fragment::new(source, 2, 3);
         let from = fragment.from_position();
         assert_eq!(from.line_no(), 1);
         assert_eq!(
@@ -422,10 +436,11 @@ mod test {
 
     #[test]
     fn fragment_positions_lines_2_3() {
-        let source = Source::new("\nb = 3\n \nc=4");
-        let equals_line_2 = Fragment::new(&source, 3, 4);
+        let set = SourceSet::new_debug("\nb = 3\n \nc=4");
+        let source = set.iter().next().unwrap();
+        let equals_line_2 = Fragment::new(source, 3, 4);
         assert_eq!(equals_line_2.source(), "=");
-        let literal_line_4 = Fragment::new(&source, 11, 12);
+        let literal_line_4 = Fragment::new(source, 11, 12);
         assert_eq!(literal_line_4.source(), "4");
 
         let from = equals_line_2.from_position();
@@ -479,16 +494,18 @@ mod test {
 
     #[test]
     fn format_position() {
-        let source = Source::new("\nb = 3\n \nc=4");
+        let set = SourceSet::new_debug("\nb = 3\n \nc=4");
+        let source = set.iter().next().unwrap();
         let literal_line_4 =
-            &format!("{}", Fragment::new(&source, 11, 12).from_position());
+            &format!("{}", Fragment::new(source, 11, 12).from_position());
         assert_eq!(literal_line_4, "4:3");
     }
 
     #[test]
     fn format_fragment() {
-        let source = Source::new("\nb = 3\n \nc=4");
-        let b_line_2 = &format!("{}", Fragment::new(&source, 1, 2));
+        let set = SourceSet::new_debug("\nb = 3\n \nc=4");
+        let source = set.iter().next().unwrap();
+        let b_line_2 = &format!("{}", Fragment::new(source, 1, 2));
         assert_eq!(b_line_2, "`b` at 2:1");
     }
 }

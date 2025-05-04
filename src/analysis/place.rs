@@ -1,7 +1,7 @@
-use crate::parse::{Source, SourceRange};
+use crate::source::{Source, SourceRange};
 
 struct Place<'s> {
-    source: &'s Source,
+    source: Source<'s>,
     source_range: SourceRange<'s>,
 }
 

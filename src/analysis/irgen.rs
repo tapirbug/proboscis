@@ -1,11 +1,11 @@
 use std::{borrow::Cow, collections::HashMap, fmt, mem};
 
-use crate::{analysis::FunctionDefinition, ir::{DataAddress, FunctionsBuilder, PlaceAddress, Program, StaticDataBuilder, StaticFunctionAddress}, parse::{AstNode, Atom, Source, TokenKind}};
+use crate::{analysis::FunctionDefinition, ir::{DataAddress, FunctionsBuilder, PlaceAddress, Program, StaticDataBuilder, StaticFunctionAddress}, parse::{AstNode, Atom, TokenKind}, source::Source};
 
 use super::{strings::decode_string, SemanticAnalysis};
 
 pub struct IrGen<'a, 's, 't> {
-    source: &'s Source,
+    source: Source<'s>,
     static_data: StaticDataBuilder,
     functions: FunctionsBuilder,
     nil_address: DataAddress,
@@ -252,23 +252,23 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
 
 pub enum IrGenError<'s, 't> {
     NumberParseError {
-        source: &'s Source,
+        source: Source<'s>,
         atom: &'t Atom<'s>,
     },
     NotInScope {
-        source: &'s Source,
+        source: Source<'s>,
         atom: &'t Atom<'s>
     },
     ExpectedFunctionIdentifier {
-        source: &'s Source,
+        source: Source<'s>,
         found_instead: &'t AstNode<'s>
     },
     FunctionNotFound {
-        source: &'s Source,
+        source: Source<'s>,
         ident: &'t Atom<'s>
     },
     ReservedName {
-        source: &'s Source,
+        source: Source<'s>,
         ident: &'t Atom<'s>
     }
 }

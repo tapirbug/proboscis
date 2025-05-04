@@ -1,5 +1,5 @@
-use super::frag::{Fragment, SourceRange};
-use super::source::Source;
+use crate::source::{Fragment, SourceRange};
+use crate::source::Source;
 use super::token::Token;
 
 #[derive(Debug)]
@@ -33,7 +33,7 @@ pub struct QuotedList<'s> {
 }
 
 impl<'s> AstNode<'s> {
-    pub fn fragment<'a>(&'a self, source: &'s Source) -> Fragment<'s> {
+    pub fn fragment<'a>(&'a self, source: Source<'s>) -> Fragment<'s> {
         self.source_range().of(source)
     }
 
@@ -85,7 +85,7 @@ impl<'s> Atom<'s> {
         self.token.source_range()
     }
 
-    pub fn fragment<'a>(&'a self, source: &'s Source) -> Fragment<'s> {
+    pub fn fragment<'a>(&'a self, source: Source<'s>) -> Fragment<'s> {
         self.source_range().of(source)
     }
 }
@@ -109,7 +109,7 @@ impl<'s> List<'s> {
         &self.elements
     }
 
-    pub fn fragment<'a>(&'a self, source: &'s Source) -> Fragment<'s> {
+    pub fn fragment<'a>(&'a self, source: Source<'s>) -> Fragment<'s> {
         self.source_range().of(source)
     }
 }
@@ -133,7 +133,7 @@ impl<'s> QuotedList<'s> {
         &self.elements
     }
 
-    pub fn fragment<'a>(&'a self, source: &'s Source) -> Fragment<'s> {
+    pub fn fragment<'a>(&'a self, source: Source<'s>) -> Fragment<'s> {
         self.source_range().of(source)
     }
 }

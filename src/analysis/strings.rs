@@ -1,12 +1,14 @@
 use std::{borrow::Cow, mem};
 
-use crate::parse::{AstNode, Source, Token, TokenKind};
+use crate::parse::{AstNode, Token, TokenKind};
+
+use crate::source::Source;
 
 /// Analysis result of static strings for a single source file.
 ///
 /// Records the static strings in their decoded form and their lengths.
 pub struct StringTable<'s> {
-    source: &'s Source,
+    source: Source<'s>,
     /// Static strings, only owned if they contain escapes.
     ///
     /// This could be leveraged to make borrowed-to-borrowed conversions very
@@ -33,7 +35,7 @@ pub struct StringTableEntryIter<'s, 't> {
 pub struct StringTableOffset(usize);
 
 impl<'s> StringTable<'s> {
-    pub fn analyze(source: &'s Source, ast: &[AstNode<'s>]) -> Self {
+    pub fn analyze(source: Source<'s>, ast: &[AstNode<'s>]) -> Self {
         let mut table = StringTable {
             source,
             strings: vec![],
@@ -208,15 +210,14 @@ impl StringTableOffset {
 
 #[cfg(test)]
 mod test {
-    use crate::parse::Parser;
+    use crate::{parse::Parser, source::SourceSet};
 
     use super::*;
 
     #[test]
     fn test_borrowed() {
-        let source = &Source::new(
-            "(deffun asdf () \"heya!\" (\"how's it going\" \"how's it going\"  \"how's it going\") '(\"pal\"))",
-        );
+        let source_set = SourceSet::new_debug("(deffun asdf () \"heya!\" (\"how's it going\" \"how's it going\"  \"how's it going\") '(\"pal\"))");
+        let source = source_set.one();
         let ast = Parser::new(source).parse().unwrap();
         let table = StringTable::analyze(source, &ast);
         assert_eq!(table.string_count(), 3);
@@ -244,9 +245,8 @@ mod test {
 
     #[test]
     fn test_escaped() {
-        let source = &Source::new(
-            "(\"9\\\\11\" \"\\\"What?\\\" she said\" \"9\\\\11\")",
-        );
+        let source_set = SourceSet::new_debug("(\"9\\\\11\" \"\\\"What?\\\" she said\" \"9\\\\11\")");
+        let source = source_set.one();
         let ast = Parser::new(source).parse().unwrap();
         let table = StringTable::analyze(source, &ast);
         assert_eq!(table.string_count(), 2);

@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use crate::{
     analysis::{FunctionDefinitionError, GlobalDefinitionError, IrGenError, NameError, SemanticAnalysisError},
-    parse::ParserError,
+    parse::ParserError, source::SourceError,
 };
 
 pub type CommandResult<T> = Result<T, CommandError>;
@@ -69,5 +69,11 @@ impl<'s, 't> From<IrGenError<'s, 't>> for CommandError {
         CommandError {
             msg: value.to_string()
         }
+    }
+}
+
+impl From<SourceError> for CommandError {
+    fn from(value: SourceError) -> Self {
+        CommandError { msg: value.to_string() }
     }
 }

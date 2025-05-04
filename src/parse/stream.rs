@@ -1,4 +1,5 @@
-use super::{lexer::LexerError, source::Source, token::Token};
+use super::{lexer::LexerError, token::Token};
+use crate::source::Source;
 
 /// Something that yields tokens sequentially, with a lifetime for the source
 /// `'s` and tokens in the source that is separate from the mutable lifetime
@@ -12,5 +13,5 @@ pub trait TokenStream<'s> {
     fn next<'l>(&'l mut self) -> Option<Result<Token<'s>, LexerError<'s>>>;
 
     /// Gets the source that the tokens refer to.
-    fn source<'l>(&'l self) -> &'s Source;
+    fn source<'l>(&'l self) -> Source<'s>;
 }

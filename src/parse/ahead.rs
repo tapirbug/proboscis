@@ -1,9 +1,9 @@
 use super::{
     lexer::{Lexer, LexerError},
-    source::Source,
     stream::TokenStream,
     token::Token,
 };
+use crate::source::Source;
 use std::mem;
 
 /// Provides token lookahead for a lexer to be used by a parser.
@@ -110,7 +110,7 @@ impl<'s, I: TokenStream<'s>, const N: usize> TokenStream<'s>
         self.consume()
     }
 
-    fn source<'l>(&'l self) -> &'s Source {
+    fn source<'l>(&'l self) -> Source<'s> {
         self.inner.source()
     }
 }
@@ -123,24 +123,28 @@ impl<'s> Default for LookaheadEntry<'s> {
 
 #[cfg(test)]
 mod test {
+    use crate::source::SourceSet;
+
     use super::*;
 
     #[should_panic]
     #[test]
     fn cannot_create_lookahead_0() {
-        let source = Source::new("a 12 dead beef");
+        let source_set = SourceSet::new_debug("a 12 dead beef");
+        let source = source_set.one();
         let _ahead: LookaheadStream<_, 0> =
-            LookaheadStream::new(Lexer::new(&source));
+            LookaheadStream::new(Lexer::new(source));
     }
 
     #[test]
     fn lookahead_1_lookahead_all_at_once() {
-        let source = Source::new("a 12 dead beef");
+        let source_set = SourceSet::new_debug("a 12 dead beef");
+        let source = source_set.one();
         let mut ahead: LookaheadStream<_, 1> =
-            LookaheadStream::new(Lexer::new(&source));
+            LookaheadStream::new(Lexer::new(source));
         let [ahead0] = ahead.max_lookahead();
         let ahead0 = ahead0.unwrap().unwrap();
-        let ahead0_fragment = ahead0.fragment(&source);
+        let ahead0_fragment = ahead0.fragment(source);
         let ahead0_src = ahead0_fragment.source();
 
         assert_eq!(ahead0_src, "a");
@@ -151,7 +155,7 @@ mod test {
 
         let [ahead0] = ahead.max_lookahead();
         let ahead0 = ahead0.unwrap().unwrap();
-        let ahead0_fragment = ahead0.fragment(&source);
+        let ahead0_fragment = ahead0.fragment(source);
         let ahead0_src = ahead0_fragment.source();
 
         assert_eq!(ahead0_src, "12");
@@ -159,18 +163,19 @@ mod test {
 
     #[test]
     fn lookahead_2_iter() {
-        let source = Source::new("a 12 dead beef");
+        let source_set = SourceSet::new_debug("a 12 dead beef");
+        let source = source_set.one();
         let mut ahead: LookaheadStream<_, 2> =
-            LookaheadStream::new(Lexer::new(&source));
+            LookaheadStream::new(Lexer::new(source));
         {
             let mut ahead = ahead.iter_lookahead();
 
             let ahead0 = ahead.next().unwrap().unwrap().unwrap();
-            let ahead0_fragment = ahead0.fragment(&source);
+            let ahead0_fragment = ahead0.fragment(source);
             let ahead0_src = ahead0_fragment.source();
 
             let ahead1 = ahead.next().unwrap().unwrap().unwrap();
-            let ahead1_fragment = ahead1.fragment(&source);
+            let ahead1_fragment = ahead1.fragment(source);
             let ahead1_src = ahead1_fragment.source();
 
             assert_eq!(ahead0_src, "a");
@@ -187,11 +192,11 @@ mod test {
         let mut ahead = ahead.iter_lookahead();
 
         let ahead0 = ahead.next().unwrap().unwrap().unwrap();
-        let ahead0_fragment = ahead0.fragment(&source);
+        let ahead0_fragment = ahead0.fragment(source);
         let ahead0_src = ahead0_fragment.source();
 
         let ahead1 = ahead.next().unwrap().unwrap().unwrap();
-        let ahead1_fragment = ahead1.fragment(&source);
+        let ahead1_fragment = ahead1.fragment(source);
         let ahead1_src = ahead1_fragment.source();
 
         assert_eq!(ahead0_src, " ");
