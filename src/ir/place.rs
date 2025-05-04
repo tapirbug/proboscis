@@ -27,4 +27,12 @@ impl PlaceAddress {
             offset: local_place_no
         }
     }
+
+    pub fn mode(self) -> AddressingMode {
+        self.mode
+    }
+
+    pub fn offset(self) -> i32 {
+        self.offset
+    }
 }

@@ -11,8 +11,10 @@ mod variant;
 
 pub use data::DataAddress;
 pub use databuilder::{StaticData, StaticDataBuilder};
+pub use datatype::IrDataType;
 pub use func::{Function, StaticFunctionAddress};
 pub use funcbuilder::FunctionsBuilder;
 pub use program::Program;
-pub use place::PlaceAddress;
+pub use place::{PlaceAddress, AddressingMode};
 pub use inst::{Instruction, InstructionBuilder};
+pub use inmem::{type_to_tag, type_to_tag_bytes};

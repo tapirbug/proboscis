@@ -26,6 +26,10 @@ impl Function {
     }
 
     pub fn export_name(&self) -> Option<&str> {
-        (self.name.len() == 0).then(|| self.name.as_ref())
+        (self.name.len() > 0).then(|| self.name.as_ref())
+    }
+
+    pub fn instructions(&self) -> &[Instruction] {
+        &self.instructions
     }
 }

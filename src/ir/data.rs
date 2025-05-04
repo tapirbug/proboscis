@@ -9,4 +9,8 @@ impl DataAddress {
     pub fn to_le_bytes(self) -> [u8; 4] {
         self.0.to_le_bytes()
     }
+
+    pub fn offset(self) -> i32 {
+        self.0
+    }
 }
