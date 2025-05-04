@@ -4,7 +4,7 @@ use crate::parse::{ast::Atom, token::TokenKind};
 
 use super::{
     ahead::LookaheadStream,
-    ast::{AstNode, List, QuotedList},
+    ast::{AstNode, List, Quoted, QuotedList},
     ignore::Ignore,
     lexer::{Lexer, LexerError},
     stream::TokenStream as _,
@@ -63,7 +63,7 @@ impl<'s> Parser<'s> {
             | TokenKind::IntLit
             | TokenKind::StringLit
             | TokenKind::Ident => match source0 {
-                "'" => self.parse_quoted_list(),
+                "'" => self.parse_quoted(),
                 _ => Ok(Atom::new(self.lexer.next().unwrap().unwrap())),
             },
             TokenKind::Comment | TokenKind::Ws => unreachable!(),
@@ -114,7 +114,7 @@ impl<'s> Parser<'s> {
         ))
     }
 
-    fn parse_quoted_list<'a>(
+    fn parse_quoted<'a>(
         &'a mut self,
     ) -> Result<AstNode<'s>, ParserError<'s>> {
         let source = self.lexer.source();
@@ -128,41 +128,14 @@ impl<'s> Parser<'s> {
             _ => return Err(ParserError::mismatched_token(source, tick)),
         }
 
-        let opening = self
-            .lexer
-            .next()
-            .ok_or_else(|| ParserError::unexpected_end(source))?
-            .map_err(|e| ParserError::lexer_error(source, e.clone()))?;
-        match opening.kind() {
-            TokenKind::LeftParen => {}
-            _ => return Err(ParserError::mismatched_token(source, opening)),
-        }
-
-        let mut closing = None;
-        let mut items = vec![];
-        while let Some(Ok(token)) = self.lexer.max_lookahead()[0] {
-            if matches!(token.kind(), TokenKind::RightParen) {
-                // end of list found, consume the closing parenthesis
-                closing = self.lexer.next();
-                break;
-            } else {
-                // not end of list yet, parse as an entry of the list
-                items.push(self.parse_one()?)
-            }
-        }
-
-        let closing = closing
-            .ok_or_else(|| {
-                ParserError::unbalanced_parenthesis(source, opening.clone())
-            })?
-            .unwrap();
-
-        Ok(QuotedList::new(
+        let quoted = self.parse_one()?;
+        
+        Ok(Quoted::new(
             SourceRange::union_two(
                 tick.source_range(),
-                closing.source_range(),
+                quoted.source_range(),
             ),
-            items,
+            quoted
         ))
     }
 }
@@ -373,11 +346,11 @@ mod test {
             "5"
         );
 
-        let quoted_list = &remove[2].quoted_list().unwrap();
+        let quoted_list = &remove[2].quoted().unwrap();
         assert_eq!(quoted_list.source_range().of(source).source(), "'(0 10)");
         assert_eq!(remove[2].source_range().of(source).source(), "'(0 10)");
 
-        let quoted_list = quoted_list.elements();
+        let quoted_list = quoted_list.quoted().list().unwrap().elements();
         assert_eq!(quoted_list.len(), 2);
         assert_eq!(
             quoted_list[0]

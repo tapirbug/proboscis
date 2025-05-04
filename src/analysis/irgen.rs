@@ -54,7 +54,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         Ok(Program::new(generator.static_data.build(), generator.functions.build()))
     }
 
-    /// Gets data addresses for static data, generating it only if needed.
+    /// Gets data addresses for static data, reusing existing data if possible.
     pub fn static_data_for_node(&mut self, value: &'t AstNode<'s>) -> Result<DataAddress, IrGenError<'s, 't>> {
         Ok(match value {
             AstNode::Atom(atom) => {
@@ -76,15 +76,15 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
                 }
             },
             // could be a list within a quoted list, but we'll save that for later
-            AstNode::List(_) => todo!("functions in global unimplemented"),
-            AstNode::QuotedList(l) => {
+            AstNode::List(l) => {
                 let mut successor = self.nil_address;
                 for predecessor in l.elements().iter().rev() {
                     let predecessor = self.static_data_for_node(predecessor)?;
                     successor = self.static_data.static_list_node(predecessor, successor);
                 }
                 successor
-            }
+            },
+            AstNode::Quoted(q) => self.static_data_for_node(q.quoted())?,
         })
     }
 
@@ -176,8 +176,8 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
 
     fn generate_code(&mut self, code: &'t AstNode<'s>, addr: StaticFunctionAddress, local_vars: &HashMap<&'s str, PlaceAddress>, next_local_place_address: &mut i32) -> Result<PlaceAddress, IrGenError<'s, 't>> {
         Ok(match code {
-            // quoted lists evaluate to a reference to static data stored in a local place
-            AstNode::QuotedList(_) => {
+            // quoted stuff evaluates to a reference to static data for now (ignoring that mutating it could cause problems)
+            AstNode::Quoted(quoted) => {
                 let data_address = self.static_data_for_node(code)?;
                 let place_address = PlaceAddress::new_local(*next_local_place_address);
                 *next_local_place_address += mem::size_of::<i32>() as i32;

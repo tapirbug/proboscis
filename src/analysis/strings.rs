@@ -85,10 +85,8 @@ impl<'s> StringTable<'s> {
                     self.add_strings(el);
                 }
             }
-            AstNode::QuotedList(list) => {
-                for el in list.elements() {
-                    self.add_strings(el);
-                }
+            AstNode::Quoted(quoted) => {
+                self.add_strings(quoted.quoted());
             }
         }
     }

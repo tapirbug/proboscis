@@ -7,8 +7,8 @@ pub enum AstNode<'s> {
     Atom(Atom<'s>),
     /// A standard list, usually a function invocation, e.g. `(max 4)` or `()`.
     List(List<'s>),
-    /// A quoted list, e.g. `'(1 2)`.`
-    QuotedList(QuotedList<'s>),
+    /// A quoted list or identifier, e.g. `'(1 2)`.`, 'string
+    Quoted(Quoted<'s>),
 }
 
 #[derive(Debug)]
@@ -20,6 +20,12 @@ pub struct Atom<'s> {
 pub struct List<'s> {
     source_range: SourceRange<'s>,
     elements: Vec<AstNode<'s>>,
+}
+
+#[derive(Debug)]
+pub struct Quoted<'s> {
+    source_range: SourceRange<'s>,
+    quoted: Box<AstNode<'s>>,
 }
 
 #[derive(Debug)]
@@ -41,9 +47,7 @@ impl<'s> AstNode<'s> {
         match self {
             &AstNode::Atom(Atom { ref token }) => token.source_range(),
             &AstNode::List(List { source_range, .. }) => source_range,
-            &AstNode::QuotedList(QuotedList { source_range, .. }) => {
-                source_range
-            }
+            &AstNode::Quoted(Quoted { source_range, .. }) => source_range
         }
     }
 
@@ -63,8 +67,8 @@ impl<'s> AstNode<'s> {
         }
     }
 
-    pub fn quoted_list<'a>(&'a self) -> Option<&'a QuotedList<'s>> {
-        if let &AstNode::QuotedList(ref list) = self {
+    pub fn quoted<'a>(&'a self) -> Option<&'a Quoted<'s>> {
+        if let &AstNode::Quoted(ref list) = self {
             Some(list)
         } else {
             None
@@ -114,14 +118,14 @@ impl<'s> List<'s> {
     }
 }
 
-impl<'s> QuotedList<'s> {
+impl<'s> Quoted<'s> {
     pub fn new(
         source_range: SourceRange<'s>,
-        elements: Vec<AstNode<'s>>,
+        quoted: AstNode<'s>,
     ) -> AstNode<'s> {
-        AstNode::QuotedList(QuotedList {
+        AstNode::Quoted(Quoted {
             source_range,
-            elements,
+            quoted: Box::new(quoted),
         })
     }
 
@@ -129,8 +133,8 @@ impl<'s> QuotedList<'s> {
         self.source_range
     }
 
-    pub fn elements<'b>(&'b self) -> &'b [AstNode<'s>] {
-        &self.elements
+    pub fn quoted<'b>(&'b self) -> &'b AstNode<'s> {
+        &self.quoted
     }
 
     pub fn fragment<'a>(&'a self, source: Source<'s>) -> Fragment<'s> {

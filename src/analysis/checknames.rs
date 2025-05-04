@@ -69,8 +69,8 @@ impl<'t, 's> NameCheck<'t, 's> {
     ) -> Result<(), NameError<'s, 't>> {
         match code {
             AstNode::List(list) => self.check_invocation(list),
-            // quoted lists don't need to refer to defined names
-            AstNode::QuotedList(_) => Ok(()),
+            // quoted stuff doesn't need to refer to defined names
+            AstNode::Quoted(_) => Ok(()),
             AstNode::Atom(atom) => match atom.token().kind() {
                 // these are not names, so always ok
                 TokenKind::FloatLit
