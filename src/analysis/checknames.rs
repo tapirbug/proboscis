@@ -13,7 +13,6 @@ const GLOBAL_VARS: &[&str] = &["nil", "t"];
 /// Checks that all names in an AST node refer to defined functions or
 /// variables, depending on context.
 pub struct NameCheck<'t, 's> {
-    source: Source<'s>,
     functions: &'t [FunctionDefinition<'t, 's>],
     globals: &'t [GlobalDefinition<'t, 's>],
     /// Variables from lexical scope
@@ -23,23 +22,24 @@ pub struct NameCheck<'t, 's> {
 impl<'t, 's> NameCheck<'t, 's> {
     pub fn check<'a: 't>(analysis: &'a SemanticAnalysis<'t, 's>) -> Result<(), NameError<'t, 's>> {
         let mut check = Self {
-            source: analysis.source(),
             functions: analysis.function_definitions(),
             globals: analysis.global_definitions(),
             scope_vars: vec![],
         };
         for root_code in analysis.root_code() {
-            check.check_names(root_code)?;
+            for code in root_code.code() {
+                check.check_names(root_code.source(), code)?;
+            }
         }
         for function in analysis.function_definitions() {
             check.push_fn_scope(function);
             for fn_code in function.body() {
-                check.check_names(fn_code)?;
+                check.check_names(function.source(), fn_code)?;
             }
             check.pop_scope();
         }
         for global in analysis.global_definitions() {
-            check.check_names(global.value())?;
+            check.check_names(global.source(), global.value())?;
         }
         Ok(())
     }
@@ -65,10 +65,11 @@ impl<'t, 's> NameCheck<'t, 's> {
 
     fn check_names(
         &self,
+        source: Source<'s>,
         code: &'t AstNode<'s>,
     ) -> Result<(), NameError<'s, 't>> {
         match code {
-            AstNode::List(list) => self.check_invocation(list),
+            AstNode::List(list) => self.check_invocation(source, list),
             // quoted stuff doesn't need to refer to defined names
             AstNode::Quoted(_) => Ok(()),
             AstNode::Atom(atom) => match atom.token().kind() {
@@ -81,16 +82,17 @@ impl<'t, 's> NameCheck<'t, 's> {
                 | TokenKind::LeftParen
                 | TokenKind::RightParen => Ok(()),
                 // names must refer to variables for now (no #'+)
-                TokenKind::Ident => self.check_variable_ident(atom),
+                TokenKind::Ident => self.check_variable_ident(source, atom),
             },
         }
     }
 
     fn check_fn_ident(
         &self,
+        source: Source<'s>,
         ident_atom: &'t Atom<'s>,
     ) -> Result<(), NameError<'s, 't>> {
-        let ident_str = ident_atom.source_range().of(self.source).source();
+        let ident_str = ident_atom.source_range().of(source).source();
         for defined_fn in self.functions {
             let defined_fn_ident = defined_fn
                 .name()
@@ -106,16 +108,17 @@ impl<'t, 's> NameCheck<'t, 's> {
             return Ok(());
         }
         Err(NameError::UndefinedFunctionName {
-            source: self.source,
+            source: source,
             name: ident_atom,
         })
     }
 
     fn check_variable_ident(
         &self,
+        source: Source<'s>,
         ident_atom: &'t Atom<'s>,
     ) -> Result<(), NameError<'s, 't>> {
-        let ident_str = ident_atom.source_range().of(self.source).source();
+        let ident_str = ident_atom.source_range().of(source).source();
         let is_defined_scope_var = self
             .scope_vars
             .iter()
@@ -140,13 +143,14 @@ impl<'t, 's> NameCheck<'t, 's> {
             return Ok(());
         }
         Err(NameError::UndefinedVariableName {
-            source: self.source,
+            source: source,
             name: ident_atom,
         })
     }
 
     fn check_invocation(
         &self,
+        source: Source<'s>,
         invocation: &'t List<'s>,
     ) -> Result<(), NameError<'s, 't>> {
         let invocation = invocation.elements();
@@ -158,14 +162,14 @@ impl<'t, 's> NameCheck<'t, 's> {
             .atom()
             .filter(|a| matches!(a.token().kind(), TokenKind::Ident))
             .ok_or_else(|| NameError::MalformedFunctionName {
-                source: self.source,
+                source,
                 name: function_ident,
             })?;
-        self.check_fn_ident(function_ident)?;
+        self.check_fn_ident(source, function_ident)?;
 
         let args = &invocation[1..];
         for arg in args {
-            self.check_names(arg)?;
+            self.check_names(source, arg)?;
         }
 
         Ok(())

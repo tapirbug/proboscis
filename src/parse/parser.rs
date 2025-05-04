@@ -4,7 +4,7 @@ use crate::parse::{ast::Atom, token::TokenKind};
 
 use super::{
     ahead::LookaheadStream,
-    ast::{AstNode, List, Quoted, QuotedList},
+    ast::{Ast, AstNode, List, Quoted},
     ignore::Ignore,
     lexer::{Lexer, LexerError},
     stream::TokenStream as _,
@@ -29,7 +29,8 @@ impl<'s> Parser<'s> {
         }
     }
 
-    /// Parses zero or more things, e.g. a sequence of function definitions.
+    /// Parses a file containing zero or more things, e.g. a sequence of
+    /// function definitions.
     ///
     /// This is intended as the entry rule to parse a source code document.
     ///
@@ -37,12 +38,12 @@ impl<'s> Parser<'s> {
     /// empty vector because the underlying lexer will be exhausted.
     pub fn parse<'a>(
         &'a mut self,
-    ) -> Result<Vec<AstNode<'s>>, ParserError<'s>> {
+    ) -> Result<Ast<'s>, ParserError<'s>> {
         let mut items = vec![];
         while let Some(Ok(_)) = self.lexer.max_lookahead()[0] {
             items.push(self.parse_list()?);
         }
-        Ok(items)
+        Ok(Ast::new(self.lexer.source(), items))
     }
 
     /// Parses a single list or atom.
@@ -381,7 +382,7 @@ mod test {
         let two = parser.parse().unwrap();
         assert_eq!(two.len(), 2);
 
-        assert!(two[0].list().is_some());
-        assert!(two[1].list().is_some());
+        assert!(two.root_nodes()[0].list().is_some());
+        assert!(two.root_nodes()[1].list().is_some());
     }
 }

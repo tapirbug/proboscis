@@ -1,6 +1,14 @@
+use std::slice;
+
 use crate::source::{Fragment, SourceRange};
 use crate::source::Source;
 use super::token::Token;
+
+#[derive(Debug)]
+pub struct Ast<'s> {
+    source: Source<'s>,
+    root_nodes: Vec<AstNode<'s>>
+}
 
 #[derive(Debug)]
 pub enum AstNode<'s> {
@@ -28,14 +36,36 @@ pub struct Quoted<'s> {
     quoted: Box<AstNode<'s>>,
 }
 
-#[derive(Debug)]
-pub struct QuotedList<'s> {
-    /// Source range including the tick.
-    ///
-    /// Note that there could be white-space between the tick and the opening
-    /// parenthesis marking the start of list entries.
-    source_range: SourceRange<'s>,
-    elements: Vec<AstNode<'s>>,
+impl<'s> Ast<'s> {
+    pub fn new(source: Source<'s>, root_nodes: Vec<AstNode<'s>>) -> Self {
+        Self { source, root_nodes }
+    }
+
+    #[cfg(test)]
+    pub fn len(&self) -> usize {
+        self.root_nodes.len()
+    }
+
+    pub fn source(&self) -> Source<'s> {
+        self.source
+    }
+
+    pub fn root_nodes(&self) -> &[AstNode<'s>] {
+        &self.root_nodes
+    }
+
+    pub fn iter(&self) -> slice::Iter<AstNode<'s>> {
+        self.root_nodes.iter()
+    }
+}
+
+impl<'s> IntoIterator for Ast<'s> {
+    type Item = AstNode<'s>;
+    type IntoIter = std::vec::IntoIter<AstNode<'s>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.root_nodes.into_iter()
+    }
 }
 
 impl<'s> AstNode<'s> {

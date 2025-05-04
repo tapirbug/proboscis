@@ -202,7 +202,7 @@ mod test {
         let source = source_set.one();
         let ast = Parser::new(source).parse().unwrap();
 
-        let definition = FunctionDefinition::extract(source, &ast[0])
+        let definition = FunctionDefinition::extract(source, &ast.root_nodes()[0])
             .unwrap()
             .unwrap();
         assert_eq!(
@@ -210,7 +210,7 @@ mod test {
             "max-2"
         );
 
-        let definition = FunctionDefinition::extract(source, &ast[1])
+        let definition = FunctionDefinition::extract(source, &ast.root_nodes()[1])
             .unwrap()
             .unwrap();
         assert_eq!(

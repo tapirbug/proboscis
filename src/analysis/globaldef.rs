@@ -151,14 +151,14 @@ mod test {
         let source = source_set.one();
         let ast = Parser::new(source).parse().unwrap();
         let definition =
-            GlobalDefinition::extract(source, &ast[0]).unwrap().unwrap();
+            GlobalDefinition::extract(source, &ast.root_nodes()[0]).unwrap().unwrap();
         let name = definition.name().source_range().of(source).source();
         assert_eq!(name, "*list*");
         let value_code = definition.value().source_range().of(source).source();
         assert_eq!(value_code, "'(1 2 3 4)");
 
         let non_definition =
-            GlobalDefinition::extract(source, &ast[1]).unwrap();
+            GlobalDefinition::extract(source, &ast.root_nodes()[1]).unwrap();
         assert!(non_definition.is_none());
     }
 }

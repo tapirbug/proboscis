@@ -5,7 +5,7 @@ use crate::{analysis::FunctionDefinition, ir::{DataAddress, FunctionsBuilder, Pl
 use super::{strings::decode_string, SemanticAnalysis};
 
 pub struct IrGen<'a, 's, 't> {
-    source: Source<'s>,
+    // TODO make this work without a single source
     static_data: StaticDataBuilder,
     functions: FunctionsBuilder,
     nil_address: DataAddress,
@@ -20,7 +20,6 @@ pub struct IrGen<'a, 's, 't> {
 
 impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
     pub fn new(analysis: &'a SemanticAnalysis<'s, 't>) -> Self {
-        let source = analysis.source();
         let mut static_data = StaticDataBuilder::new();
         let functions = FunctionsBuilder::new();
         let nil_address = static_data.static_nil();
@@ -33,7 +32,6 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         global_variables.insert("nil", nil_place);
         global_variables.insert("t", t_place);
         Self {
-            source,
             static_data,
             functions,
             nil_address,
@@ -55,19 +53,19 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
     }
 
     /// Gets data addresses for static data, reusing existing data if possible.
-    pub fn static_data_for_node(&mut self, value: &'t AstNode<'s>) -> Result<DataAddress, IrGenError<'s, 't>> {
+    pub fn static_data_for_node(&mut self, source: Source<'s>, value: &'t AstNode<'s>) -> Result<DataAddress, IrGenError<'s, 't>> {
         Ok(match value {
             AstNode::Atom(atom) => {
                 match atom.token().kind() {
                     TokenKind::Comment | TokenKind::Ws | TokenKind::LeftParen | TokenKind::RightParen => unreachable!(),
                     TokenKind::StringLit => {
-                        let decoded = decode_string(atom.fragment(self.source).source());
+                        let decoded = decode_string(atom.fragment(source).source());
                         let decoded2 = decoded.clone();
                         *self.global_string_addresses.entry(decoded)
                             .or_insert_with(|| self.static_data.static_string(decoded2.as_ref()))
                     },
                     TokenKind::IntLit => {
-                        let decoded = i32::from_str_radix(atom.fragment(self.source).source(), 10).map_err(|_| IrGenError::NumberParseError { atom, source: self.source })?;
+                        let decoded = i32::from_str_radix(atom.fragment(source).source(), 10).map_err(|_| IrGenError::NumberParseError { atom, source: source })?;
                         *self.global_number_addresses.entry(decoded)
                             .or_insert_with(|| self.static_data.static_number(decoded))
                     },
@@ -79,20 +77,20 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
             AstNode::List(l) => {
                 let mut successor = self.nil_address;
                 for predecessor in l.elements().iter().rev() {
-                    let predecessor = self.static_data_for_node(predecessor)?;
+                    let predecessor = self.static_data_for_node(source, predecessor)?;
                     successor = self.static_data.static_list_node(predecessor, successor);
                 }
                 successor
             },
-            AstNode::Quoted(q) => self.static_data_for_node(q.quoted())?,
+            AstNode::Quoted(q) => self.static_data_for_node(source, q.quoted())?,
         })
     }
 
     pub fn generate_source_global_variables(&mut self) -> Result<(), IrGenError<'s, 't>> {
         for global in self.analysis.global_definitions() {
-            let name = global.name().fragment(self.source).source();
+            let name = global.name().fragment(global.source()).source();
             let value = global.value();
-            let data_address = self.static_data_for_node(value)?;
+            let data_address = self.static_data_for_node(global.source(), value)?;
             let data_place = self.static_data.static_place(data_address);
             self.global_variables.insert(name, data_place);
         }
@@ -120,7 +118,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
     fn generate_source_functions(&mut self)  -> Result<(), IrGenError<'s, 't>> {
         // first give them all an index
         for function in self.analysis.function_definitions() {
-            let name = function.name().fragment(self.source).source();
+            let name = function.name().fragment(function.source()).source();
             let address = self.functions.add_exported_function(name);
             self.function_addresses.insert(name.into(), address);
         }
@@ -135,11 +133,11 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
 
     fn generate_function(&mut self, definition: &'t FunctionDefinition<'s, 't>) -> Result<(), IrGenError<'s, 't>> {
         let mut local_vars = HashMap::new();
-        let func_address = self.function_addresses[definition.name().fragment(self.source).source()];
+        let func_address = self.function_addresses[definition.name().fragment(definition.source()).source()];
         let arg_count = definition.args().elements().len() as u32;
         self.functions.implement_function(func_address).alloc_places(arg_count);
         for (arg_idx, arg) in definition.args().elements().iter().enumerate() {
-            let ident = arg.atom().unwrap().fragment(self.source).source();
+            let ident = arg.atom().unwrap().fragment(definition.source()).source();
             let address = PlaceAddress::new_local((arg_idx * mem::size_of::<i32>()) as i32);
             self.functions.implement_function(func_address).consume_param(address);
             local_vars.insert(ident, address);
@@ -147,7 +145,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         let mut next_local_place_address = (definition.args().elements().len() * mem::size_of::<i32>()) as i32;
         let mut last_place = None;
         for code in definition.body() {
-            last_place = Some(self.generate_code(code, func_address, &local_vars, &mut next_local_place_address)?);
+            last_place = Some(self.generate_code(definition.source(), code, func_address, &local_vars, &mut next_local_place_address)?);
         }
         self.functions.implement_function(func_address).dealloc_places(next_local_place_address as u32)
             .add_return(last_place.unwrap_or_else(|| self.nil_place));
@@ -157,16 +155,18 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
     fn generate_root_code(&mut self) -> Result<(), IrGenError<'s, 't>> {
         let conflicting_definition = self.analysis.function_definitions()
             .iter()
-            .find(|d| d.name().fragment(self.source).source() == "main");
+            .find(|d| d.name().fragment(d.source()).source() == "main");
         if let Some(conflicting_definition) = conflicting_definition {
-            return Err(IrGenError::ReservedName { ident: conflicting_definition.name(), source: self.source });
+            return Err(IrGenError::ReservedName { ident: conflicting_definition.name(), source: conflicting_definition.source() });
         }
         let main_addr = self.functions.add_exported_function("main");
         //self.functions.implement_function(main_addr);
         let mut next_local_place_address = 0;
         let no_local_vars = HashMap::new();
-        for &code in self.analysis.root_code() {
-            self.generate_code(code, main_addr, &no_local_vars, &mut next_local_place_address)?;
+        for code in self.analysis.root_code() {
+            for each_code in code.code() {
+                self.generate_code(code.source(), each_code, main_addr, &no_local_vars, &mut next_local_place_address)?;
+            }
         }
         self.functions.implement_function(main_addr)
             .dealloc_places(next_local_place_address as u32)
@@ -174,11 +174,11 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         Ok(())
     }
 
-    fn generate_code(&mut self, code: &'t AstNode<'s>, addr: StaticFunctionAddress, local_vars: &HashMap<&'s str, PlaceAddress>, next_local_place_address: &mut i32) -> Result<PlaceAddress, IrGenError<'s, 't>> {
+    fn generate_code(&mut self, source: Source<'s>, code: &'t AstNode<'s>, addr: StaticFunctionAddress, local_vars: &HashMap<&'s str, PlaceAddress>, next_local_place_address: &mut i32) -> Result<PlaceAddress, IrGenError<'s, 't>> {
         Ok(match code {
             // quoted stuff evaluates to a reference to static data for now (ignoring that mutating it could cause problems)
             AstNode::Quoted(quoted) => {
-                let data_address = self.static_data_for_node(code)?;
+                let data_address = self.static_data_for_node(source, code)?;
                 let place_address = PlaceAddress::new_local(*next_local_place_address);
                 *next_local_place_address += mem::size_of::<i32>() as i32;
                 self.functions.implement_function(addr)
@@ -188,7 +188,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
             },
             // numbers and strings also evaluate to a reference to static data stored in a local place
             AstNode::Atom(atom) if matches!(atom.token().kind(), TokenKind::StringLit | TokenKind::IntLit) => {
-                let data_address = self.static_data_for_node(code)?;
+                let data_address = self.static_data_for_node(source, code)?;
                 let place_address = PlaceAddress::new_local(*next_local_place_address);
                 *next_local_place_address += mem::size_of::<i32>() as i32;
                 self.functions.implement_function(addr)
@@ -198,9 +198,9 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
             },
             // identifiers can refer to arguments or global variables and write their value to a place
             AstNode::Atom(atom) if matches!(atom.token().kind(), TokenKind::Ident) => {
-                let ident = atom.fragment(self.source).source();
+                let ident = atom.fragment(source).source();
                 let src_place = local_vars.get(ident).or_else(|| self.global_variables.get(ident))
-                    .ok_or_else(|| IrGenError::NotInScope { atom, source: self.source })
+                    .ok_or_else(|| IrGenError::NotInScope { atom, source })
                     .copied()?;
                 let dst_place = PlaceAddress::new_local(*next_local_place_address);
                 *next_local_place_address += mem::size_of::<i32>() as i32;
@@ -218,7 +218,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
                 let args = &list.elements()[1..];
                 let mut evaluated_arg_places: Vec<PlaceAddress> = Vec::with_capacity(args.len());
                 for arg in args {
-                    let place = self.generate_code(arg, addr, local_vars, next_local_place_address)?;
+                    let place = self.generate_code(source, arg, addr, local_vars, next_local_place_address)?;
                     evaluated_arg_places.push(place);
                 }
 
@@ -238,10 +238,10 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
                 let func_ident = list.elements()[0]
                     .atom()
                     .filter(|a| a.token().kind() == TokenKind::Ident)
-                    .ok_or_else(|| IrGenError::ExpectedFunctionIdentifier { found_instead: &list.elements()[0], source: self.source })?;
-                let func_address = self.function_addresses.get(func_ident.fragment(self.source).source())
+                    .ok_or_else(|| IrGenError::ExpectedFunctionIdentifier { found_instead: &list.elements()[0], source })?;
+                let func_address = self.function_addresses.get(func_ident.fragment(source).source())
                     .cloned()
-                    .ok_or_else(|| IrGenError::FunctionNotFound { ident: func_ident, source: self.source })?;
+                    .ok_or_else(|| IrGenError::FunctionNotFound { ident: func_ident, source })?;
                 instructions.call(func_address, arguments_place, result_place);
                 
                 result_place

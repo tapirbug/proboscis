@@ -1,5 +1,3 @@
-use crate::analysis::MultiStringTable;
-
 use super::{data::DataAddress, databuilder::StaticData, func::Function};
 
 pub struct Program {

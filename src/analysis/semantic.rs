@@ -1,77 +1,77 @@
 use std::fmt;
 
-use crate::parse::{AstNode};
+use crate::{parse::{AstNode, AstSet}, source::Source};
 
-use crate::source::Source;
-
-use super::{FunctionDefinition, FunctionDefinitionError, GlobalDefinition, GlobalDefinitionError, NameCheck, NameError, StringTable};
+use super::{FunctionDefinition, FunctionDefinitionError, GlobalDefinition, GlobalDefinitionError, NameError};
 
 pub struct SemanticAnalysis<'s, 't> {
+    root_code: Vec<RootCode<'s, 't>>,
+    function_definitions: Vec<FunctionDefinition<'s, 't>>,
+    global_definitions: Vec<GlobalDefinition<'s, 't>>,
+}
+
+pub struct RootCode<'t, 's> {
     source: Source<'s>,
     root_code: Vec<&'t AstNode<'s>>,
-    function_definitions: Vec<FunctionDefinition<'t, 's>>,
-    global_definitions: Vec<GlobalDefinition<'t, 's>>,
-    strings: StringTable<'s>
 }
 
 impl<'t, 's> SemanticAnalysis<'t, 's> {
-    /// Semantically analyses a single source file and returns the result of
-    /// analysis if it appears to be valid.
-    pub fn analyze(source: Source<'s>, ast: &'t [AstNode<'s>]) -> Result<SemanticAnalysis<'s, 't>, SemanticAnalysisError<'s, 't>> {
-        let strings = StringTable::analyze(source, &ast);
+    /// Semantically analyses the asts of a group of source files that form
+    /// a unit.
+    pub fn analyze(asts: &'t AstSet<'s>) -> Result<SemanticAnalysis<'s, 't>, SemanticAnalysisError<'s, 't>> {
         // TODO find constant numbers too
 
-        let mut root_code = vec![];
+        let mut root_codes = vec![];
         let mut function_definitions = vec![];
         let mut global_definitions = vec![];
-        for root_node in ast {
-            // try parsing root-level element as a function first
-            let def = FunctionDefinition::extract(source, root_node)?;
-            match def {
-                Some(def) => {
-                    function_definitions.push(def);
-                    continue;
-                }
-                None => {}
-            }
 
-            // then as a global
-            let def = GlobalDefinition::extract(source, root_node)?;
-            match def {
-                Some(def) => {
-                    global_definitions.push(def);
-                    continue;
+        for ast in asts.iter() {
+            let mut root_code = vec![];
+            for root_node in ast.iter() {
+                // try parsing root-level element as a function first
+                let def = FunctionDefinition::extract(ast.source(), root_node)?;
+                match def {
+                    Some(def) => {
+                        function_definitions.push(def);
+                        continue;
+                    }
+                    None => {}
                 }
-                None => {}
-            }
 
-            // all other cases are considered to be top-level code
-            root_code.push(root_node);
+                // then as a global
+                let def = GlobalDefinition::extract(ast.source(), root_node)?;
+                match def {
+                    Some(def) => {
+                        global_definitions.push(def);
+                        continue;
+                    }
+                    None => {}
+                }
+
+                // all other cases are considered to be top-level code
+                root_code.push(root_node);
+            }
+            root_codes.push(RootCode {
+                source: ast.source(),
+                root_code
+            });
         }
 
-        Ok(SemanticAnalysis { source, root_code, function_definitions, global_definitions, strings })
+        Ok(SemanticAnalysis { root_code: root_codes, function_definitions, global_definitions })
     }
 }
 
-impl<'t, 's> SemanticAnalysis<'t, 's> {
-    pub fn source(&self) -> Source<'s> {
-        self.source
-    }
-
-    pub fn root_code(&self) -> &[&'t AstNode<'s>] {
+impl<'t, 's> SemanticAnalysis<'s, 't> {
+    pub fn root_code(&self) -> &[RootCode<'s, 't>] {
         &self.root_code
     }
 
-    pub fn function_definitions(&self) -> &[FunctionDefinition<'t, 's>] {
+    pub fn function_definitions(&self) -> &[FunctionDefinition<'s, 't>] {
         &self.function_definitions
     }
 
-    pub fn global_definitions(&self) -> &[GlobalDefinition<'t, 's>] {
+    pub fn global_definitions(&self) -> &[GlobalDefinition<'s, 't>] {
         &self.global_definitions
-    }
-
-    pub fn strings(&self) -> &StringTable<'s> {
-        &self.strings
     }
 }
 
@@ -107,5 +107,15 @@ impl<'s, 't> fmt::Display for SemanticAnalysisError<'s, 't> {
             Self::FunctionDefinition(error) => write!(f, "{}", error),
             Self::GlobalDefinition(error) => write!(f, "{}", error),
         }
+    }
+}
+
+impl<'s, 't> RootCode<'s, 't> {
+    pub fn source(&self) -> Source<'s> {
+        self.source
+    }
+
+    pub fn code(&self) -> &[&'t AstNode<'s>] {
+        &self.root_code
     }
 }
