@@ -1,12 +1,10 @@
 use std::{fmt, fs::File, io::{self, Read}, ops::Range, path::{Path, PathBuf}, ptr};
 
-/// Padding between source files.
-const PADDING: &str = "\n";
-
 /// A set of source files that should be compiled as a unit.
 pub struct SourceSet {
     /// Append-only combined source code without duplicate source files.
-    /// There is a single newline between all source files as padding.
+    /// There is no padding between source files, so they should be accessed
+    /// via the source iterator to tell the files apart.
     combined_source: String,
     entries: Vec<SourceInfoEntry>
 }
@@ -67,18 +65,7 @@ impl SourceSet {
         self.check_duplicate_file(path)?;
         let mut file = File::open(path).map_err(|io| SourceError::IO { path: path.into(), error: io })?;
 
-        if !self.combined_source.is_empty() {
-            // add padding so we can safely parse multiple files as one if it makes sense
-            self.combined_source.push_str(PADDING);
-        }
-
-        let appended_bytes_after_padding = match file.read_to_string(&mut self.combined_source).map_err(|io| SourceError::IO { path: path.into(), error: io }) {
-            Err(error) => {
-                self.combined_source.pop(); // remove the unneeded padding before returning
-                return Err(error.into());    
-            },
-            Ok(appended_after_padding) => appended_after_padding
-        };
+        let appended_bytes_after_padding = file.read_to_string(&mut self.combined_source).map_err(|io| SourceError::IO { path: path.into(), error: io })?;
 
         self.entries.push(SourceInfoEntry {
             file: Some(path.into()),
@@ -92,9 +79,6 @@ impl SourceSet {
     /// 
     /// No attempt is made to check for duplicates for sources added this way.
     pub fn load_without_path(&mut self, source: &str) -> Source {
-        if !self.combined_source.is_empty() {
-            self.combined_source.push_str(PADDING);
-        }
         self.combined_source.push_str(source);
         self.entries.push(SourceInfoEntry { file: None, range: (self.combined_source.len() - source.len())..self.combined_source.len() });
         Source { set: self, idx: self.entries.len() - 1 }
