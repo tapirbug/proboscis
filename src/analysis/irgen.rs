@@ -107,11 +107,9 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         self.function_addresses.insert("format".to_string(), format_addr);
         let working_place = PlaceAddress::new_local(0);
         self.functions.implement_function(format_addr)
-            .alloc_places(1)
             .consume_param(working_place) // ignore the t parameter
             .consume_param(working_place) // this is the format string, which we just print verbatim for now
             .call_print(working_place)
-            .dealloc_places(1)
             .add_return(self.nil_place);
     }
 
@@ -135,7 +133,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         let mut local_vars = HashMap::new();
         let func_address = self.function_addresses[definition.name().fragment(definition.source()).source()];
         let arg_count = definition.args().elements().len() as u32;
-        self.functions.implement_function(func_address).alloc_places(arg_count);
+        self.functions.implement_function(func_address);
         for (arg_idx, arg) in definition.args().elements().iter().enumerate() {
             let ident = arg.atom().unwrap().fragment(definition.source()).source();
             let address = PlaceAddress::new_local((arg_idx * mem::size_of::<i32>()) as i32);
@@ -147,7 +145,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         for code in definition.body() {
             last_place = Some(self.generate_code(definition.source(), code, func_address, &local_vars, &mut next_local_place_address)?);
         }
-        self.functions.implement_function(func_address).dealloc_places(next_local_place_address as u32)
+        self.functions.implement_function(func_address)
             .add_return(last_place.unwrap_or_else(|| self.nil_place));
         Ok(())
     }
@@ -169,7 +167,6 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
             }
         }
         self.functions.implement_function(main_addr)
-            .dealloc_places(next_local_place_address as u32)
             .add_return(self.nil_place);
         Ok(())
     }
@@ -182,7 +179,6 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
                 let place_address = PlaceAddress::new_local(*next_local_place_address);
                 *next_local_place_address += mem::size_of::<i32>() as i32;
                 self.functions.implement_function(addr)
-                    .alloc_places(1)
                     .load_data(data_address, place_address);
                 place_address
             },
@@ -192,7 +188,6 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
                 let place_address = PlaceAddress::new_local(*next_local_place_address);
                 *next_local_place_address += mem::size_of::<i32>() as i32;
                 self.functions.implement_function(addr)
-                    .alloc_places(1)
                     .load_data(data_address, place_address);
                 place_address
             },
@@ -205,7 +200,6 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
                 let dst_place = PlaceAddress::new_local(*next_local_place_address);
                 *next_local_place_address += mem::size_of::<i32>() as i32;
                 self.functions.implement_function(addr)
-                    .alloc_places(1)
                     .write_place(src_place, dst_place);
                 dst_place
             },
@@ -228,8 +222,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
                 *next_local_place_address += mem::size_of::<i32>() as i32;
                 // start with empty argument list
                 let instructions = self.functions.implement_function(addr);
-                instructions.alloc_places(2)
-                    .write_place(self.nil_place, arguments_place);
+                instructions.write_place(self.nil_place, arguments_place);
                 // and then start pushing elements from the back to the front
                 for &arg in evaluated_arg_places.iter().rev() {
                     instructions.cons(arg, arguments_place, arguments_place);

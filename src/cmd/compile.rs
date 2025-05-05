@@ -26,7 +26,7 @@ pub fn compile(args: &TopLevelArgs) -> CommandResult<()> {
     let analysis = SemanticAnalysis::analyze(&asts)?;
     NameCheck::check(&analysis)?;
     let program = IrGen::generate(&analysis)?;
-
+    // before generating output, we could also optimize stuff
     match args.output_path() {
         Some(path) => {
             let mut file = File::create(path)?;

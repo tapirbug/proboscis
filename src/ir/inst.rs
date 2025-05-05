@@ -20,12 +20,6 @@ pub enum Instruction {
     Return {
         value: PlaceAddress,
     },
-    AllocPlaces {
-        count: u32,
-    },
-    DeallocPlaces {
-        count: u32,
-    },
     // mark the beginning of a block in code
     EnterBlock,
     // start the block `block_up` relative to the current point in code
@@ -123,16 +117,6 @@ impl InstructionBuilder {
 
     pub fn add_return(&mut self, value: PlaceAddress) -> &mut Self {
         self.instructions.push(Instruction::Return { value });
-        self
-    }
-
-    pub fn alloc_places(&mut self, count: u32) -> &mut Self {
-        self.instructions.push(Instruction::AllocPlaces { count });
-        self
-    }
-
-    pub fn dealloc_places(&mut self, count: u32) -> &mut Self {
-        self.instructions.push(Instruction::DeallocPlaces { count });
         self
     }
 

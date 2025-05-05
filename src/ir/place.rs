@@ -1,12 +1,13 @@
 #[derive(Debug, Clone, Copy)]
 pub struct PlaceAddress {
     mode: AddressingMode,
+    /// Offset in bytes
     offset: i32
 }
 
 #[derive(Debug, Copy, Clone)]
 pub enum AddressingMode {
-    // accessing a local place from alloc-places
+    // accessing a local place
     Local,
     // accessing a place relative to the beginning of memory, used for global
     // variables

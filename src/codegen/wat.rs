@@ -2,6 +2,8 @@ use std::{fmt, io::{self, Write}, mem};
 
 use crate::ir::{type_to_tag, IrDataType, AddressingMode, Function, Instruction, PlaceAddress, Program, StaticData};
 
+use super::locals::local_places_byte_len;
+
 pub fn write_wat<W: Write>(w: &mut W, program: &Program) -> io::Result<()> {
     write!(w, "(module\n")?;
     write!(w, "\t(import \"js\" \"mem\" (memory 1))\n")?; // reserves 64KiB
@@ -30,28 +32,24 @@ fn write_static_data<W: Write>(w: &mut W, static_data: &StaticData) -> io::Resul
 }
 
 fn write_function<W: Write>(w: &mut W, function: &Function, idx: usize) -> io::Result<()> {
+    let locals_byte_len = local_places_byte_len(function.instructions());
+
     write!(w, "\t(func $fun{} ", idx)?;
     if let Some(name) = function.export_name() {
         write!(w, "(export \"{}\") ", name)?;
     }
     write!(w, "(param i32) (result i32) (local i32)\n")?;
+
+    if locals_byte_len > 0 {
+        write!(w, "\t\tglobal.get $stack_top\n")?;
+        write!(w, "\t\ti32.const {}\n", locals_byte_len)?;
+        write!(w, "\t\ti32.add\n")?;
+        write!(w, "\t\tglobal.set $stack_top\n")?;
+    }
+
     for &instruction in function.instructions() {
         write!(w, "\t\t;; {:?}\n", instruction)?;
         match instruction {
-            Instruction::AllocPlaces { count } => {
-                let bytes = mem::size_of::<i32>() * (count as usize);
-                write!(w, "\t\tglobal.get $stack_top\n")?;
-                write!(w, "\t\ti32.const {}\n", bytes)?;
-                write!(w, "\t\ti32.add\n")?;
-                write!(w, "\t\tglobal.set $stack_top\n")?;
-            },
-            Instruction::DeallocPlaces { count } => {
-                let bytes = mem::size_of::<i32>() * (count as usize);
-                write!(w, "\t\tglobal.get $stack_top\n")?;
-                write!(w, "\t\ti32.const {}\n", bytes)?;
-                write!(w, "\t\ti32.sub\n")?;
-                write!(w, "\t\tglobal.set $stack_top\n")?;
-            },
             Instruction::LoadData { data, to } => {
                 write_load_place_self_address(w, to)?;
                 write!(w, "\t\ti32.const {}\n", data.offset())?;
@@ -173,6 +171,14 @@ fn write_function<W: Write>(w: &mut W, function: &Function, idx: usize) -> io::R
             inst => unimplemented!("instruction unimplemented: {:?}", inst)
         }
     }
+
+    if locals_byte_len > 0 {
+        write!(w, "\t\tglobal.get $stack_top\n")?;
+        write!(w, "\t\ti32.const {}\n", locals_byte_len)?;
+        write!(w, "\t\ti32.sub\n")?;
+        write!(w, "\t\tglobal.set $stack_top\n")?;
+    }
+
     // TODO write instruction
     write!(w, "\t)\n")?;
     Ok(())
