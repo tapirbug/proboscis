@@ -3,7 +3,7 @@ use std::mem;
 use crate::ir::{data::DataAddress, inmem::append_string};
 
 use super::{
-    inmem::{append_list_node, append_place, append_sint32},
+    inmem::{append_identifier, append_list_node, append_place, append_sint32},
     place::PlaceAddress,
 };
 
@@ -53,6 +53,13 @@ impl StaticDataBuilder {
     pub fn static_string(&mut self, data: &str) -> DataAddress {
         let address = self.top_static_data_address();
         append_string(&mut self.static_data, data).unwrap();
+        address
+    }
+
+    /// Append a new static identifier as data without checking for duplicates.
+    pub fn static_identifier(&mut self, data: &str) -> DataAddress {
+        let address = self.top_static_data_address();
+        append_identifier(&mut self.static_data, data).unwrap();
         address
     }
 

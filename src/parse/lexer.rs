@@ -67,6 +67,9 @@ impl<'s> TokenStream<'s> for Lexer<'s> {
             (')', _) => {
                 Ok(Token::new(self.take(")".len()), TokenKind::RightParen))
             }
+            ('\'', _) => {
+                Ok(Token::new(self.take("\'".len()), TokenKind::Quote))
+            },
             (';', _) => {
                 let len = rest
                     .find(|&(_, c)| c == '\n')
@@ -171,7 +174,7 @@ impl<'s> TokenStream<'s> for Lexer<'s> {
 fn is_identifier_start(c: char) -> bool {
     matches!(
         c,
-        '+' | '-' | '/' | '*' | '.' | '_' | '\\' | '<' | '>' | '=' | '\''
+        '+' | '-' | '/' | '*' | '.' | '_' | '\\' | '<' | '>' | '=' | '?'
     ) || c.is_alphabetic()
 }
 
@@ -445,6 +448,22 @@ mod test {
     }
 
     #[test]
+    fn escaped_ident() {
+        let source_set = SourceSet::new_debug("'sum");
+        let source = source_set.one();
+
+        let mut lexer = Lexer::new(source);
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::Quote));
+        assert_eq!(token.fragment(source).source(), "'");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::Ident));
+        assert_eq!(token.fragment(source).source(), "sum");
+    }
+
+    #[test]
     fn unterminated_empty_string() {
         let source_set = SourceSet::new_debug("\"");
         let source = source_set.one();
@@ -687,7 +706,7 @@ mod test {
         assert_eq!(token.fragment(source).source(), " ");
 
         let token = lexer.next().unwrap().unwrap();
-        assert!(matches!(token.kind(), TokenKind::Ident));
+        assert!(matches!(token.kind(), TokenKind::Quote));
         assert_eq!(token.fragment(source).source(), "'");
 
         let token = lexer.next().unwrap().unwrap();

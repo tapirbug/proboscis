@@ -13,7 +13,11 @@ pub enum IrDataType {
     ///
     /// Lengths do not include the length header, so the empty strings is one
     /// 32-bit zero.
-    ///
-    /// Local variables cannot hold this type, but they might refer to it.
     CharacterData,
+    /// A 32-bit number, followed by
+    /// that exact number of bytes forming a valid UTF-8 string.
+    ///
+    /// Lengths do not include the length header, so the empty strings is one
+    /// 32-bit zero.
+    Identifier,
 }

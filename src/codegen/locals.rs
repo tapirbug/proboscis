@@ -87,6 +87,11 @@ pub fn local_places_byte_len(instructions: &[Instruction]) -> i32 {
         list,
         to,
     }  => { locals.must_contain(list); locals.must_contain(to); },
+    Instruction::ConcatStringLike { left, right, to } => {
+        locals.must_contain(left);
+        locals.must_contain(right);
+        locals.must_contain(to);
+    }
         }
     }
     locals.local_space_bytes()

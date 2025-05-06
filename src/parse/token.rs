@@ -30,7 +30,7 @@ pub enum TokenKind {
     LeftParen,
     /// Closing parenthesis.
     RightParen,
-    /// General identifier like a function name e.g. `map`, `+`, `#'+` `'prime`
+    /// General identifier like a function name e.g. `map`, `+`
     Ident,
     /// Integer like `5`, `-42`, `+3`.
     IntLit,
@@ -43,4 +43,7 @@ pub enum TokenKind {
     /// White-space, including newlines and the newlines directly after
     /// comments.
     Ws,
+    /// A single quote, used for escaping the next thing, e.g. the quote
+    /// in `'string`.
+    Quote,
 }

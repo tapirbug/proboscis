@@ -83,6 +83,13 @@ pub enum Instruction {
         list: PlaceAddress,
         to: PlaceAddress,
     },
+    /// Concatenate two strings or identifiers (or a mix) to form a new string.
+    /// No typechecking.
+    ConcatStringLike {
+        left: PlaceAddress,
+        right: PlaceAddress,
+        to: PlaceAddress
+    }
 }
 
 pub struct InstructionBuilder {
@@ -152,6 +159,11 @@ impl InstructionBuilder {
 
     pub fn consume_param(&mut self, to: PlaceAddress) -> &mut Self {
         self.instructions.push(Instruction::ConsumeParam { to });
+        self
+    }
+
+    pub fn concat_string_like(&mut self, left: PlaceAddress, right: PlaceAddress, to: PlaceAddress) -> &mut Self {
+        self.instructions.push(Instruction::ConcatStringLike { left, right, to });
         self
     }
 

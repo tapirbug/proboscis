@@ -12,6 +12,8 @@ pub struct IrGen<'a, 's, 't> {
     nil_place: PlaceAddress,
     function_addresses: HashMap<String, StaticFunctionAddress>,
     global_string_addresses: HashMap<Cow<'s, str>, DataAddress>,
+    /// Identifiers for static data, e.g. 'string for concatenate
+    global_identifier_addresses: HashMap<&'s str, DataAddress>,
     global_number_addresses: HashMap<i32, DataAddress>,
     /// Maps identifiers for global variables to a place address
     global_variables: HashMap<&'s str, PlaceAddress>,
@@ -25,7 +27,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         let nil_address = static_data.static_nil();
         let nil_place = static_data.static_place(nil_address);
         // for now truth is just a string
-        let t_address = static_data.static_string("T");
+        let t_address = static_data.static_identifier("T");
         let t_place = static_data.static_place(t_address);
         let function_addresses: HashMap<String, StaticFunctionAddress> = HashMap::<String, StaticFunctionAddress>::new();
         let mut global_variables = HashMap::new();
@@ -38,6 +40,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
             nil_place,
             function_addresses,
             global_string_addresses: HashMap::new(),
+            global_identifier_addresses: HashMap::new(),
             global_number_addresses: HashMap::new(),
             global_variables,
             analysis
@@ -57,7 +60,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         Ok(match value {
             AstNode::Atom(atom) => {
                 match atom.token().kind() {
-                    TokenKind::Comment | TokenKind::Ws | TokenKind::LeftParen | TokenKind::RightParen => unreachable!(),
+                    TokenKind::Comment | TokenKind::Ws | TokenKind::LeftParen | TokenKind::RightParen | TokenKind::Quote => unreachable!(),
                     TokenKind::StringLit => {
                         let decoded = decode_string(atom.fragment(source).source());
                         let decoded2 = decoded.clone();
@@ -70,7 +73,11 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
                             .or_insert_with(|| self.static_data.static_number(decoded))
                     },
                     TokenKind::FloatLit => todo!("floats are unimplemented"),
-                    TokenKind::Ident => todo!("identifiers in static not supported")
+                    TokenKind::Ident => {
+                        let value = atom.fragment(source).source();
+                        *self.global_identifier_addresses.entry(value)
+                            .or_insert_with(|| self.static_data.static_identifier(value))
+                    }
                 }
             },
             // could be a list within a quoted list, but we'll save that for later
@@ -99,6 +106,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
 
     fn generate_builtin_functions(&mut self) -> Result<(), IrGenError<'s, 't>> {
         self.generate_builtin_format();
+        self.generate_builtin_concat_string_like_2();
         Ok(())
     }
 
@@ -111,6 +119,18 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
             .consume_param(working_place) // this is the format string, which we just print verbatim for now
             .call_print(working_place)
             .add_return(self.nil_place);
+    }
+
+    fn generate_builtin_concat_string_like_2(&mut self) {
+        let addr = self.functions.add_private_function();
+        self.function_addresses.insert("concat-string-like-2".to_string(), addr);
+        let left_place = PlaceAddress::new_local(0);
+        let right_place = PlaceAddress::new_local(mem::size_of::<i32>() as i32);
+        self.functions.implement_function(addr)
+            .consume_param(left_place)
+            .consume_param(right_place)
+            .concat_string_like(left_place, right_place, left_place)
+            .add_return(left_place);
     }
 
     fn generate_source_functions(&mut self)  -> Result<(), IrGenError<'s, 't>> {

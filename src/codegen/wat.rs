@@ -1,8 +1,10 @@
-use std::{fmt, io::{self, Write}, mem};
+use std::{fmt, fs, io::{self, Write}, mem, path::Path};
 
 use crate::ir::{type_to_tag, IrDataType, AddressingMode, Function, Instruction, PlaceAddress, Program, StaticData};
 
 use super::locals::local_places_byte_len;
+
+const RUNTIME_PATH: &str = "rt/rt.wat";
 
 pub fn write_wat<W: Write>(w: &mut W, program: &Program) -> io::Result<()> {
     write!(w, "(module\n")?;
@@ -10,18 +12,31 @@ pub fn write_wat<W: Write>(w: &mut W, program: &Program) -> io::Result<()> {
     // we assume this is present to log at a specific memory offset with a specific len, assuming UTF-8
     write!(w, "\t(import \"console\" \"log\" (func $log (param i32 i32)))\n")?;
     write_static_data(w, program.static_data())?;
-    let stack_start = program.static_data().data().len();
-    // reserve 10KiB of stack space, disregarding alignment
-    let stack_end = stack_start + 10 * 1024_usize;
-    let heap_start = stack_end;
-    write!(w, "\t(global $stack_bottom i32 (i32.const {}))\n", stack_start)?;
-    write!(w, "\t(global $stack_top (mut i32) (i32.const {}))\n", stack_end)?;
-    write!(w, "\t(global $local_offset (mut i32) (i32.const {}))\n", stack_start)?;
-    write!(w, "\t(global $heap_start (mut i32) (i32.const {}))\n", heap_start)?;
+    write_runtime_variables(w, program.static_data())?;
+    write_runtime_functions(w)?;
     for (idx, function) in program.functions().iter().enumerate() {
         write_function(w, function, idx)?;
     }
     write!(w, ")\n")?; // closing module
+    Ok(())
+}
+
+fn write_runtime_variables<W: Write>(w: &mut W, static_data: &StaticData) -> io::Result<()> {
+    let stack_start = static_data.data().len();
+    // reserve 10KiB of stack space right after the constant data, disregarding alignment
+    // the stack will grow there from the bottom by increasing stack_bottom
+    let stack_end = stack_start + 10 * 1024_usize;
+    let heap_start = stack_end;
+    write!(w, "\t(global $stack_bottom (mut i32) (i32.const {}))\n", stack_start)?;
+    write!(w, "\t(global $stack_top i32 (i32.const {}))\n", stack_end)?;
+    write!(w, "\t(global $local_offset (mut i32) (i32.const {}))\n", stack_start)?;
+    write!(w, "\t(global $heap_start (mut i32) (i32.const {}))\n", heap_start)?;
+    Ok(())
+}
+
+fn write_runtime_functions<W: Write>(w: &mut W) -> io::Result<()> {
+    let runtime = fs::read_to_string(RUNTIME_PATH)?;
+    write!(w, "\n{}\n", runtime)?;
     Ok(())
 }
 
@@ -41,10 +56,10 @@ fn write_function<W: Write>(w: &mut W, function: &Function, idx: usize) -> io::R
     write!(w, "(param i32) (result i32) (local i32)\n")?;
 
     if locals_byte_len > 0 {
-        write!(w, "\t\tglobal.get $stack_top\n")?;
+        write!(w, "\t\tglobal.get $stack_bottom\n")?;
         write!(w, "\t\ti32.const {}\n", locals_byte_len)?;
         write!(w, "\t\ti32.add\n")?;
-        write!(w, "\t\tglobal.set $stack_top\n")?;
+        write!(w, "\t\tglobal.set $stack_bottom\n")?;
     }
 
     for &instruction in function.instructions() {
@@ -66,7 +81,7 @@ fn write_function<W: Write>(w: &mut W, function: &Function, idx: usize) -> io::R
                 write_load_place_self_address(w, to)?;
                 write_load_place_referee(w, params)?;
                 // then set top of the stack as new local offset for the function we call
-                write!(w, "\t\tglobal.get $stack_top\n")?;
+                write!(w, "\t\tglobal.get $stack_bottom\n")?;
                 write!(w, "\t\tglobal.set $local_offset\n")?;
                 write!(w, "\t\tcall $fun{}\n", function.to_i32())?;
                 // store result in place we remembered before params
@@ -137,46 +152,23 @@ fn write_function<W: Write>(w: &mut W, function: &Function, idx: usize) -> io::R
                 write!(w, "\t\ti32.add\n")?;
                 write!(w, "\t\ti32.load\n")?;
                 write!(w, "\t\tlocal.set 0\n")?;
-
-
-                /*// first load the target address
-                write_load_place_address(w, to)?;
-                // load the passed location of argument list
-                write!(w, "\t\tlocal.get 0\n")?;
-                // skip type tag and go to car
-                write!(w, "\t\ti32.const {}\n", mem::size_of::<i32>())?;
-                write!(w, "\t\ti32.add\n")?;
-                // load car address and remember it
-                write!(w, "\t\ti32.load\n")?;
-                write!(w, "\t\tlocal.set 1\n")?;
-                // load car and store it in the target place we loaded in the beginning
-                write!(w, "\t\tlocal.get 1\n")?;
-                write!(w, "\t\ti32.store\n")?;
-
-                // now on to modifying params
-                write!(w, "\t\tlocal.get 0\n")?; // push the location of the params
-
-                // load the location of the beginning of the params list as dst
-                write!(w, "\t\tlocal.get 0\n")?;
-                // skip type tag and car and go to cdr
-                write!(w, "\t\ti32.const {}\n", 2 * mem::size_of::<i32>())?;
-                write!(w, "\t\ti32.add\n")?;
-                // load the cdr address
-                write!(w, "\t\ti32.load\n")?;
-                // copy 3 ints for type tag, car and cdr from the next node to the params list
-                write!(w, "\t\ti32.const {}\n", 3 * mem::size_of::<i32>())?;
-                write!(w, "\t\tmemory.copy\n")?;*/
             },
-
+            Instruction::ConcatStringLike { left, right, to } => {
+                write_load_place_self_address(w, to)?;
+                write_load_place_referee(w, left)?;
+                write_load_place_referee(w, right)?;
+                write!(w, "\t\tcall $concat_strings\n")?;
+                write!(w, "\t\ti32.store\n")?;
+            },
             inst => unimplemented!("instruction unimplemented: {:?}", inst)
         }
     }
 
     if locals_byte_len > 0 {
-        write!(w, "\t\tglobal.get $stack_top\n")?;
+        write!(w, "\t\tglobal.get $stack_bottom\n")?;
         write!(w, "\t\ti32.const {}\n", locals_byte_len)?;
         write!(w, "\t\ti32.sub\n")?;
-        write!(w, "\t\tglobal.set $stack_top\n")?;
+        write!(w, "\t\tglobal.set $stack_bottom\n")?;
     }
 
     // TODO write instruction

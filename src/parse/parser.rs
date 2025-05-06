@@ -55,18 +55,13 @@ impl<'s> Parser<'s> {
         let token0 = ahead0
             .ok_or_else(|| ParserError::unexpected_end(source))?
             .map_err(|e| ParserError::lexer_error(source, e.clone()))?;
-        let fragment0 = token0.fragment(source);
-        let source0 = fragment0.source();
-
         match token0.kind() {
+            TokenKind::Quote => self.parse_quoted(),
             TokenKind::LeftParen => self.parse_list(),
             TokenKind::FloatLit
             | TokenKind::IntLit
             | TokenKind::StringLit
-            | TokenKind::Ident => match source0 {
-                "'" => self.parse_quoted(),
-                _ => Ok(Atom::new(self.lexer.next().unwrap().unwrap())),
-            },
+            | TokenKind::Ident => Ok(Atom::new(self.lexer.next().unwrap().unwrap())),
             TokenKind::Comment | TokenKind::Ws => unreachable!(),
             _ => Err(ParserError::mismatched_token(
                 source,
@@ -125,7 +120,7 @@ impl<'s> Parser<'s> {
             .ok_or_else(|| ParserError::unexpected_end(source))?
             .map_err(|e| ParserError::lexer_error(source, e.clone()))?;
         match (tick.kind(), tick.fragment(self.lexer.source()).source()) {
-            (TokenKind::Ident, "'") => {}
+            (TokenKind::Quote, "'") => {}
             _ => return Err(ParserError::mismatched_token(source, tick)),
         }
 

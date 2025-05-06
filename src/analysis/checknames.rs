@@ -5,6 +5,7 @@ use crate::{parse::{AstNode, Atom, List, TokenKind}, source::Source};
 use super::{semantic::SemanticAnalysis, FunctionDefinition, GlobalDefinition};
 
 const GLOBAL_FUNCTIONS: &[&str] = &[
+    "concat-string-like-2",
     "car", "cdr", "format", "if", "let", "list", "null", ">", ">=", "=", ">",
     ">=", "/=", // not equal
 ];
@@ -80,7 +81,8 @@ impl<'t, 's> NameCheck<'t, 's> {
                 | TokenKind::Comment
                 | TokenKind::Ws
                 | TokenKind::LeftParen
-                | TokenKind::RightParen => Ok(()),
+                | TokenKind::RightParen
+                | TokenKind::Quote => Ok(()),
                 // names must refer to variables for now (no #'+)
                 TokenKind::Ident => self.check_variable_ident(source, atom),
             },

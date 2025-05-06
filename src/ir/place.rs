@@ -22,10 +22,10 @@ impl PlaceAddress {
         }
     }
 
-    pub fn new_local(local_place_no: i32) -> Self {
+    pub fn new_local(local_place_byte_offset: i32) -> Self {
         Self {
             mode: AddressingMode::Local,
-            offset: local_place_no
+            offset: local_place_byte_offset
         }
     }
 
