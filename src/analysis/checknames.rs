@@ -2,10 +2,10 @@ use std::fmt;
 
 use crate::{parse::{AstNode, Atom, List, TokenKind}, source::Source};
 
-use super::{semantic::SemanticAnalysis, FunctionDefinition, GlobalDefinition};
+use super::{form::Form, semantic::SemanticAnalysis, FunctionDefinition, GlobalDefinition};
 
 const GLOBAL_FUNCTIONS: &[&str] = &[
-    "concat-string-like-2",
+    "concat-string-like-2", "type-tag-of", "cons", "add-2", "sub-2", "nil-if-0",
     "car", "cdr", "format", "if", "let", "list", "null", ">", ">=", "=", ">",
     ">=", "/=", // not equal
 ];
@@ -67,24 +67,25 @@ impl<'t, 's> NameCheck<'t, 's> {
     fn check_names(
         &self,
         source: Source<'s>,
-        code: &'t AstNode<'s>,
+        code: &'t Form<'s, 't>,
     ) -> Result<(), NameError<'s, 't>> {
         match code {
-            AstNode::List(list) => self.check_invocation(source, list),
-            // quoted stuff doesn't need to refer to defined names
-            AstNode::Quoted(_) => Ok(()),
-            AstNode::Atom(atom) => match atom.token().kind() {
-                // these are not names, so always ok
-                TokenKind::FloatLit
-                | TokenKind::IntLit
-                | TokenKind::StringLit
-                | TokenKind::Comment
-                | TokenKind::Ws
-                | TokenKind::LeftParen
-                | TokenKind::RightParen
-                | TokenKind::Quote => Ok(()),
-                // names must refer to variables for now (no #'+)
-                TokenKind::Ident => self.check_variable_ident(source, atom),
+            Form::Name(name) => self.check_variable_ident(source, name.ident()),
+            Form::Constant(_) => Ok(()), // constants don't have any names that need to be checked
+            Form::IfForm(if_form) => {
+                self.check_names(source, if_form.test_form())?;
+                self.check_names(source, if_form.then_form())?;
+                if let Some(else_form) = if_form.else_form() {
+                    self.check_names(source, else_form)?;
+                }
+                Ok(())
+            },
+            Form::Call(call) => {
+                self.check_fn_ident(source, call.function())?;
+                for arg in call.args() {
+                    self.check_names(source, arg)?;
+                }
+                Ok(())
             },
         }
     }
@@ -148,33 +149,6 @@ impl<'t, 's> NameCheck<'t, 's> {
             source: source,
             name: ident_atom,
         })
-    }
-
-    fn check_invocation(
-        &self,
-        source: Source<'s>,
-        invocation: &'t List<'s>,
-    ) -> Result<(), NameError<'s, 't>> {
-        let invocation = invocation.elements();
-        let function_ident = match invocation.get(0) {
-            None => return Ok(()), // empty list is okay, it results in nil
-            Some(fun) => fun,
-        };
-        let function_ident = function_ident
-            .atom()
-            .filter(|a| matches!(a.token().kind(), TokenKind::Ident))
-            .ok_or_else(|| NameError::MalformedFunctionName {
-                source,
-                name: function_ident,
-            })?;
-        self.check_fn_ident(source, function_ident)?;
-
-        let args = &invocation[1..];
-        for arg in args {
-            self.check_names(source, arg)?;
-        }
-
-        Ok(())
     }
 }
 

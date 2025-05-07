@@ -3,7 +3,7 @@ use std::mem;
 use crate::ir::{data::DataAddress, inmem::append_string};
 
 use super::{
-    inmem::{append_identifier, append_list_node, append_place, append_sint32},
+    inmem::{append_identifier, append_list_node, append_nil, append_place, append_sint32},
     place::PlaceAddress,
 };
 
@@ -39,7 +39,7 @@ impl StaticDataBuilder {
     pub fn static_nil(&mut self) -> DataAddress {
         let address = self.top_static_data_address();
         // car and cdr of nil are nil
-        append_list_node(&mut self.static_data, address, address).unwrap();
+        append_nil(&mut self.static_data, address.offset()).unwrap();
         address
     }
 

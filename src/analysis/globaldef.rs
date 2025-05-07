@@ -4,10 +4,12 @@ use crate::parse::{AstNode, Atom, TokenKind};
 
 use crate::source::Source;
 
+use super::form::{Form, FormError};
+
 pub struct GlobalDefinition<'s, 't> {
     source: Source<'s>,
     name: &'t Atom<'s>,
-    value: &'t AstNode<'s>,
+    value: Form<'s, 't>,
 }
 
 impl<'s, 't> GlobalDefinition<'s, 't> {
@@ -72,6 +74,8 @@ impl<'s, 't> GlobalDefinition<'s, 't> {
             }
         };
 
+        let value = Form::extract(source, value)?;
+
         Ok(Some(GlobalDefinition {
             source,
             name,
@@ -87,8 +91,8 @@ impl<'s, 't> GlobalDefinition<'s, 't> {
         self.name
     }
 
-    pub fn value(&self) -> &'t AstNode<'s> {
-        self.value
+    pub fn value(&self) -> &Form<'s, 't> {
+        &self.value
     }
 }
 
@@ -110,6 +114,13 @@ pub enum GlobalDefinitionError<'s, 't> {
         source: Source<'s>,
         node: &'t AstNode<'s>,
     },
+    Form(FormError<'s, 't>)
+}
+
+impl<'s, 't> From<FormError<'s, 't>> for GlobalDefinitionError<'s, 't> {
+    fn from(value: FormError<'s, 't>) -> Self {
+        Self::Form(value)
+    }
 }
 
 impl<'s, 't> fmt::Display for GlobalDefinitionError<'s, 't> {
@@ -133,7 +144,8 @@ impl<'s, 't> fmt::Display for GlobalDefinitionError<'s, 't> {
                     "found superfluous values in global definition after the initial value:"
                 )?;
                 writeln!(f, "{}", node.fragment(*source).source_context())
-            }
+            },
+            GlobalDefinitionError::Form(e) => write!(f, "{e}")
         }
     }
 }
@@ -154,7 +166,7 @@ mod test {
             GlobalDefinition::extract(source, &ast.root_nodes()[0]).unwrap().unwrap();
         let name = definition.name().source_range().of(source).source();
         assert_eq!(name, "*list*");
-        let value_code = definition.value().source_range().of(source).source();
+        let value_code = definition.value().constant().unwrap().node().source_range().of(source).source();
         assert_eq!(value_code, "'(1 2 3 4)");
 
         let non_definition =

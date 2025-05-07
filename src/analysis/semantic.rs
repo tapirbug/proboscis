@@ -2,20 +2,21 @@ use std::fmt;
 
 use crate::{parse::{AstNode, AstSet}, source::Source};
 
-use super::{FunctionDefinition, FunctionDefinitionError, GlobalDefinition, GlobalDefinitionError, NameError};
+use super::{form::{Form, FormError}, FunctionDefinition, FunctionDefinitionError, GlobalDefinition, GlobalDefinitionError, NameError};
 
 pub struct SemanticAnalysis<'s, 't> {
+    // REVIEW could it be a problem that function definitions and root code are not ordered with respect to each other?
     root_code: Vec<RootCode<'s, 't>>,
     function_definitions: Vec<FunctionDefinition<'s, 't>>,
     global_definitions: Vec<GlobalDefinition<'s, 't>>,
 }
 
-pub struct RootCode<'t, 's> {
+pub struct RootCode<'s, 't> {
     source: Source<'s>,
-    root_code: Vec<&'t AstNode<'s>>,
+    root_code: Vec<Form<'s, 't>>,
 }
 
-impl<'t, 's> SemanticAnalysis<'t, 's> {
+impl<'s, 't> SemanticAnalysis<'s, 't> {
     /// Semantically analyses the asts of a group of source files that form
     /// a unit.
     pub fn analyze(asts: &'t AstSet<'s>) -> Result<SemanticAnalysis<'s, 't>, SemanticAnalysisError<'s, 't>> {
@@ -49,7 +50,9 @@ impl<'t, 's> SemanticAnalysis<'t, 's> {
                 }
 
                 // all other cases are considered to be top-level code
-                root_code.push(root_node);
+                root_code.push(Form::extract(ast.source(), root_node)
+                    .map_err(|e| SemanticAnalysisError::RootFormError(e))?
+                );
             }
             root_codes.push(RootCode {
                 source: ast.source(),
@@ -61,7 +64,7 @@ impl<'t, 's> SemanticAnalysis<'t, 's> {
     }
 }
 
-impl<'t, 's> SemanticAnalysis<'s, 't> {
+impl<'s, 't> SemanticAnalysis<'s, 't> {
     pub fn root_code(&self) -> &[RootCode<'s, 't>] {
         &self.root_code
     }
@@ -80,6 +83,7 @@ pub enum SemanticAnalysisError<'s, 't> {
     Name(NameError<'s, 't>),
     FunctionDefinition(FunctionDefinitionError<'s, 't>),
     GlobalDefinition(GlobalDefinitionError<'s, 't>),
+    RootFormError(FormError<'s, 't>)
 }
 
 impl<'s, 't> From<NameError<'s, 't>> for SemanticAnalysisError<'s, 't> {
@@ -106,6 +110,7 @@ impl<'s, 't> fmt::Display for SemanticAnalysisError<'s, 't> {
             Self::Name(error) => write!(f, "{}", error),
             Self::FunctionDefinition(error) => write!(f, "{}", error),
             Self::GlobalDefinition(error) => write!(f, "{}", error),
+            Self::RootFormError(e) => write!(f, "{e}")
         }
     }
 }
@@ -115,7 +120,7 @@ impl<'s, 't> RootCode<'s, 't> {
         self.source
     }
 
-    pub fn code(&self) -> &[&'t AstNode<'s>] {
+    pub fn code(&self) -> &[Form<'s, 't>] {
         &self.root_code
     }
 }

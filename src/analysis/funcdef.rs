@@ -3,12 +3,14 @@ use std::fmt;
 use crate::parse::{AstNode, Atom, List, TokenKind};
 use crate::source::Source;
 
+use super::form::{Form, FormError};
+
 pub struct FunctionDefinition<'s, 't> {
     source: Source<'s>,
     name: &'t Atom<'s>,
     args: &'t List<'s>,
     doc_string: Option<&'t Atom<'s>>,
-    body: &'t [AstNode<'s>],
+    body: Vec<Form<'s, 't>>,
 }
 
 impl<'s, 't> FunctionDefinition<'s, 't> {
@@ -104,13 +106,17 @@ impl<'s, 't> FunctionDefinition<'s, 't> {
         };
 
         let body = rest;
+        let mut body_forms = vec![];
+        for body in body {
+            body_forms.push(Form::extract(source, body)?);
+        }
 
         Ok(Some(FunctionDefinition {
             source,
             name,
             args: params,
             doc_string,
-            body,
+            body: body_forms,
         }))
     }
 
@@ -130,8 +136,8 @@ impl<'s, 't> FunctionDefinition<'s, 't> {
         self.doc_string
     }
 
-    pub fn body(&self) -> &'t [AstNode<'s>] {
-        self.body
+    pub fn body(&self) -> &[Form<'s, 't>] {
+        &self.body
     }
 }
 
@@ -153,6 +159,14 @@ pub enum FunctionDefinitionError<'s, 't> {
         source: Source<'s>,
         node: &'t AstNode<'s>,
     },
+    FormError(FormError<'s, 't>)
+}
+
+
+impl<'s, 't> From<FormError<'s, 't>> for FunctionDefinitionError<'s, 't> {
+    fn from(value: FormError<'s, 't>) -> Self {
+        Self::FormError(value)
+    }
 }
 
 impl<'s, 't> fmt::Display for FunctionDefinitionError<'s, 't> {
@@ -176,7 +190,8 @@ impl<'s, 't> fmt::Display for FunctionDefinitionError<'s, 't> {
             FunctionDefinitionError::MalformedParams { source, node } => {
                 writeln!(f, "not a valid function parameter list:")?;
                 writeln!(f, "{}", node.fragment(*source).source_context())
-            }
+            },
+            FunctionDefinitionError::FormError(e) => write!(f, "{}", e)
         }
     }
 }

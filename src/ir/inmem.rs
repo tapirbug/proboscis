@@ -1,7 +1,21 @@
 //! Creates in-memory representations of data
 
 use super::{data::DataAddress, datatype::IrDataType};
-use std::io::{self, IoSlice, Write};
+use std::{io::{self, IoSlice, Write}, mem};
+
+pub fn append_nil<W: Write>(
+    buf: &mut W,
+    offset: i32,
+) -> io::Result<()> {
+    buf.write_vectored(&[
+        IoSlice::new(&type_to_tag_bytes(IrDataType::Nil)),
+        // hack: nil has a layout like a list node and both data and cdr point to itself
+        //       this makes it easier to implement that e.g. cdr of nil is nil
+        IoSlice::new(&offset.to_le_bytes()),
+        IoSlice::new(&offset.to_le_bytes()),
+    ])?;
+    Ok(())
+}
 
 pub fn append_string<W: Write>(buf: &mut W, data: &str) -> io::Result<()> {
     buf.write_vectored(&[
@@ -56,19 +70,21 @@ pub fn type_to_tag_bytes(data_type: IrDataType) -> [u8; 4] {
 
 pub fn type_to_tag(data_type: IrDataType) -> u32 {
     match data_type {
-        IrDataType::ListNode => 0,
-        IrDataType::CharacterData => 1,
-        IrDataType::SInt32 => 2,
-        IrDataType::Identifier => 3,
+        IrDataType::Nil => 0,
+        IrDataType::ListNode => 1,
+        IrDataType::CharacterData => 2,
+        IrDataType::SInt32 => 3,
+        IrDataType::Identifier => 4,
     }
 }
 
 fn tag_to_type(encoded: u32) -> IrDataType {
     match encoded {
-        0 => IrDataType::ListNode,
-        1 => IrDataType::CharacterData,
-        2 => IrDataType::SInt32,
-        3 => IrDataType::Identifier,
+        0 => IrDataType::Nil,
+        1 => IrDataType::ListNode,
+        2 => IrDataType::CharacterData,
+        3 => IrDataType::SInt32,
+        4 => IrDataType::Identifier,
         _ => panic!(),
     }
 }

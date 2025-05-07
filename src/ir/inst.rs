@@ -32,14 +32,17 @@ pub enum Instruction {
     Break {
         block_up: u32,
     },
-    /// Execute the next statement only if a place points to nil.
-    IfNil {
-        check: PlaceAddress,
+    ContinueIfNotNil {
+        if_not_nil: PlaceAddress,
+        block_up: u32,
     },
-    /// Execute the next statement only if a place points to something else
-    /// than nil.
-    IfNotNil {
+    BreakIfNotNil {
+        if_not_nil: PlaceAddress,
+        block_up: u32,
+    },
+    NilIfZero {
         check: PlaceAddress,
+        to: PlaceAddress
     },
     // mark the end of a block in code
     ExitBlock,
@@ -83,11 +86,29 @@ pub enum Instruction {
         list: PlaceAddress,
         to: PlaceAddress,
     },
+    /// Creates a new number from adding two numbers.
+    Add {
+        left: PlaceAddress,
+        right: PlaceAddress,
+        to: PlaceAddress,
+    },
+    /// Creates a new numebr from subtracting two numbers.
+    Sub {
+        left: PlaceAddress,
+        right: PlaceAddress,
+        to: PlaceAddress,
+    },
     /// Concatenate two strings or identifiers (or a mix) to form a new string.
     /// No typechecking.
     ConcatStringLike {
         left: PlaceAddress,
         right: PlaceAddress,
+        to: PlaceAddress
+    },
+    /// Gets the type tag of the thing referred to by of, and writes an integer
+    /// with the type tag to `to`.
+    LoadTypeTag {
+        of: PlaceAddress,
         to: PlaceAddress
     }
 }
@@ -142,18 +163,33 @@ impl InstructionBuilder {
         self
     }
 
-    pub fn if_nil(&mut self, check: PlaceAddress) -> &mut Self {
-        self.instructions.push(Instruction::IfNil { check });
+    pub fn continue_if_not_nil(&mut self, block_up: u32, if_not_nil: PlaceAddress) -> &mut Self {
+        self.instructions.push(Instruction::ContinueIfNotNil { block_up, if_not_nil });
         self
     }
 
-    pub fn if_not_nil(&mut self, check: PlaceAddress) -> &mut Self {
-        self.instructions.push(Instruction::IfNotNil { check });
+    pub fn break_if_not_nil(&mut self, block_up: u32, if_not_nil: PlaceAddress) -> &mut Self {
+        self.instructions.push(Instruction::BreakIfNotNil { block_up, if_not_nil });
+        self
+    }
+
+    pub fn nil_if_zero(&mut self, check: PlaceAddress, to: PlaceAddress) -> &mut Self {
+        self.instructions.push(Instruction::NilIfZero { check, to });
         self
     }
 
     pub fn exit_block(&mut self) -> &mut Self {
         self.instructions.push(Instruction::ExitBlock);
+        self
+    }
+
+    pub fn add(&mut self, left: PlaceAddress, right: PlaceAddress, to: PlaceAddress) -> &mut Self {
+        self.instructions.push(Instruction::Add { left, right, to });
+        self
+    }
+
+    pub fn sub(&mut self, left: PlaceAddress, right: PlaceAddress, to: PlaceAddress) -> &mut Self {
+        self.instructions.push(Instruction::Sub { left, right, to });
         self
     }
 
@@ -212,31 +248,17 @@ impl InstructionBuilder {
         self
     }
 
+    pub fn load_type_tag(
+        &mut self,
+        of: PlaceAddress,
+        to: PlaceAddress,
+    ) -> &mut Self {
+        self.instructions.push(Instruction::LoadTypeTag { of, to });
+        self
+    }
+
     /// Build the function, clearing the builder for the next function.
     pub fn build(&mut self) -> Vec<Instruction> {
         mem::take(&mut self.instructions)
     }
 }
-
-/*
-max-2:
-    alloc-places 5
-    consume-param place#0
-    consume-param place#1
-    load-data place#4 data#0
-    cons car place#1 cdr place#4 to place#3 ;; place#4 = nil
-    cons car place#0 cdr place#3 to place#3
-    call function ">" params place#3 to place#3
-    enter-block
-    enter-block
-    if-not-nil place#3
-        break 0
-    write-place from place#0 to place#4
-    break 1
-    exit-block
-    write-place from place#1 to place#4
-    exit-block
-    return place#4
-
-
-*/

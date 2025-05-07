@@ -16,6 +16,7 @@
               const p = document.createElement("p")
               p.innerText = string
               document.body.appendChild(p)
+              console.log(`${start}:+${len} => "${string}"`)
             }
           }
         }
@@ -23,7 +24,8 @@
           fetch("{{file}}"),
           importObject
         ).then((obj) => {
-          console.log(obj.instance.exports.main()); // "3"
+          const result = obj.instance.exports.main();
+          console.log("result place: ", result);
         });
     </script>
   </body>

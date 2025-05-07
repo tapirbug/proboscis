@@ -36,7 +36,7 @@
     i32.add
     i32.load ;; load right length
     i32.add ;; combined length
-    i32.const 1 ;; type for character data
+    i32.const 2 ;; type for character data
     call $alloc_sized
     local.set $result_addr
 
@@ -80,6 +80,22 @@
     memory.copy
 
     local.get $result_addr ;; return value is start of the final allocation
+)
+
+(func $make_num (param $value i32) (result i32)
+    global.get $heap_start ;; return value
+    global.get $heap_start ;; target of later store for type
+    global.get $heap_start ;; target of later store for value
+    i32.const 4
+    i32.add
+    global.get $heap_start ;; calculate and set new top
+    i32.const 8 ;; actual length includes space for type tag and actual number
+    i32.add
+    global.set $heap_start
+    local.get $value
+    i32.store
+    i32.const 3 ;; 3 is type for number
+    i32.store
 )
 
 ;; rt.wat end

@@ -1,4 +1,4 @@
-use std::{fmt, fs, io::{self, Write}, mem, path::Path};
+use std::{fmt::{self, write}, fs, io::{self, Write}, mem, path::Path};
 
 use crate::ir::{type_to_tag, IrDataType, AddressingMode, Function, Instruction, PlaceAddress, Program, StaticData};
 
@@ -48,6 +48,8 @@ fn write_static_data<W: Write>(w: &mut W, static_data: &StaticData) -> io::Resul
 
 fn write_function<W: Write>(w: &mut W, function: &Function, idx: usize) -> io::Result<()> {
     let locals_byte_len = local_places_byte_len(function.instructions());
+    let mut next_block_num = 1;
+    let mut block_stack: Vec<i32> = vec![];
 
     write!(w, "\t(func $fun{} ", idx)?;
     if let Some(name) = function.export_name() {
@@ -68,6 +70,29 @@ fn write_function<W: Write>(w: &mut W, function: &Function, idx: usize) -> io::R
             Instruction::LoadData { data, to } => {
                 write_load_place_self_address(w, to)?;
                 write!(w, "\t\ti32.const {}\n", data.offset())?;
+                write!(w, "\t\ti32.store\n")?;
+            },
+            Instruction::LoadTypeTag { of, to } => {
+                write_load_place_self_address(w, to)?;
+                write_load_place_referee(w, of)?;
+                write!(w, "\t\ti32.load\n")?;
+                write!(w, "\t\tcall $make_num\n")?;
+                write!(w, "\t\ti32.store\n")?;
+            },
+            Instruction::LoadCar { list, to } => {
+                write_load_place_self_address(w, to)?;
+                write_load_place_referee(w, list)?;
+                // skip one to go to car after type and load
+                write!(w, "\t\ti32.const {}\n", mem::size_of::<i32>())?;
+                write!(w, "\t\ti32.load\n")?;
+                write!(w, "\t\ti32.store\n")?;
+            },
+            Instruction::LoadCdr { list, to } => {
+                write_load_place_self_address(w, to)?;
+                write_load_place_referee(w, list)?;
+                // skip two to go to cdr after type and car and load
+                write!(w, "\t\ti32.const {}\n", 2 * mem::size_of::<i32>())?;
+                write!(w, "\t\ti32.load\n")?;
                 write!(w, "\t\ti32.store\n")?;
             },
             Instruction::WritePlace { from, to } => {
@@ -91,6 +116,12 @@ fn write_function<W: Write>(w: &mut W, function: &Function, idx: usize) -> io::R
             },
             Instruction::Return { value } => {
                 write_load_place_referee(w, value)?;
+                if locals_byte_len > 0 {
+                    write!(w, "\t\tglobal.get $stack_bottom\n")?;
+                    write!(w, "\t\ti32.const {}\n", locals_byte_len)?;
+                    write!(w, "\t\ti32.sub\n")?;
+                    write!(w, "\t\tglobal.set $stack_bottom\n")?;
+                }
                 write!(w, "\t\treturn\n")?;
             },
             Instruction::CallPrint { string } => {
@@ -160,7 +191,87 @@ fn write_function<W: Write>(w: &mut W, function: &Function, idx: usize) -> io::R
                 write!(w, "\t\tcall $concat_strings\n")?;
                 write!(w, "\t\ti32.store\n")?;
             },
-            inst => unimplemented!("instruction unimplemented: {:?}", inst)
+            Instruction::Add { left, right, to } => {
+                write_load_place_self_address(w, to)?;
+                // number on the left after type tag, number on the right after type tag
+                write_load_place_referee(w, left)?;
+                write!(w, "\t\ti32.const {}\n", mem::size_of::<i32>())?;
+                write!(w, "\t\ti32.add\n")?;
+                write!(w, "\t\ti32.load\n")?;
+                write_load_place_referee(w, right)?;
+                write!(w, "\t\ti32.const {}\n", mem::size_of::<i32>())?;
+                write!(w, "\t\ti32.add\n")?;
+                write!(w, "\t\ti32.load\n")?;
+                // add together
+                write!(w, "\t\ti32.add")?;
+                // create new number and save address int o
+                write!(w, "\t\tcall $make_num")?;
+                write!(w, "\t\ti32.store")?;
+            },
+            Instruction::Sub { left, right, to } => {
+                write_load_place_self_address(w, to)?;
+                // number on the left after type tag, number on the right after type tag
+                write_load_place_referee(w, left)?;
+                write!(w, "\t\ti32.const {}\n", mem::size_of::<i32>())?;
+                write!(w, "\t\ti32.add\n")?;
+                write!(w, "\t\ti32.load\n")?;
+                write_load_place_referee(w, right)?;
+                write!(w, "\t\ti32.const {}\n", mem::size_of::<i32>())?;
+                write!(w, "\t\ti32.add\n")?;
+                write!(w, "\t\ti32.load\n")?;
+                // add together
+                write!(w, "\t\ti32.sub\n")?;
+                // create new number and save address int o
+                write!(w, "\t\tcall $make_num\n")?;
+                write!(w, "\t\ti32.store\n")?;
+            },
+            Instruction::Break { block_up } => {
+                let target_block = block_stack[block_stack.len() - (block_up as usize)];
+                write!(w, "\t\tbr $block_{}_end\n", target_block)?;
+            },
+            Instruction::Continue { block_up} => {
+                let target_block = block_stack[block_stack.len() - (block_up as usize)];
+                write!(w, "\t\tbr $block_{}_start\n", target_block)?;
+            },
+            Instruction::BreakIfNotNil { block_up, if_not_nil } => {
+                write_load_place_referee(w, if_not_nil)?;
+                let target_block = block_stack[block_stack.len() - (block_up as usize)];
+                write!(w, "\t\tbr_if $block_{}_end\n", target_block)?;
+            },
+            Instruction::ContinueIfNotNil { block_up,  if_not_nil} => {
+                write_load_place_referee(w, if_not_nil)?;
+                let target_block = block_stack[block_stack.len() - (block_up as usize)];
+                write!(w, "\t\tbr_if $block_{}_start\n", target_block)?;
+            },
+            Instruction::EnterBlock => {
+                write!(w, "\t\t(loop $block_{}_start (block $block_{}_end\n", next_block_num, next_block_num)?;
+                block_stack.push(next_block_num);
+                next_block_num += 1;
+            },
+            Instruction::ExitBlock => {
+                write!(w, "\t\t));; end block\n")?;
+                block_stack.pop();
+            },
+            Instruction::NilIfZero { check, to } => {
+                write_load_place_self_address(w, to)?;
+
+                // load number address as first alternative
+                write_load_place_referee(w, check)?;
+
+                // and as the alternative load address zero (which we assume is nil)
+                write!(w, "\t\ti32.const 0\n")?;
+
+                // load the number value as the test
+                write_load_place_referee(w, check)?;
+                write!(w, "\t\ti32.const {}\n", mem::size_of::<i32>())?;
+                write!(w, "\t\ti32.add\n")?;
+                write!(w, "\t\ti32.load\n")?;
+
+                // and select nil address or the original number address based on the value being zero or not
+                write!(w, "\t\tselect\n")?;
+                write!(w, "\t\ti32.store\n")?;
+            },
+            //inst => unimplemented!("instruction unimplemented: {:?}", inst)
         }
     }
 
