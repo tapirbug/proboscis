@@ -1,0 +1,5 @@
+(let ((a "tap tap!") (b "tup tup!"))
+    (format t a)
+    (let ((a b) (b a))
+        (format t a))
+    (format t a))

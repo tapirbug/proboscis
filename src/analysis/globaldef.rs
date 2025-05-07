@@ -167,7 +167,7 @@ mod test {
         let name = definition.name().source_range().of(source).source();
         assert_eq!(name, "*list*");
         let value_code = definition.value().constant().unwrap().node().source_range().of(source).source();
-        assert_eq!(value_code, "'(1 2 3 4)");
+        assert_eq!(value_code, "(1 2 3 4)");
 
         let non_definition =
             GlobalDefinition::extract(source, &ast.root_nodes()[1]).unwrap();

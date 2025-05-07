@@ -47,12 +47,12 @@ impl<'t, 's> NameCheck<'t, 's> {
 
     fn push_fn_scope(&mut self, fun: &'t FunctionDefinition<'t, 's>) {
         let mut scope_vars = vec![];
-        for arg in fun.args().elements() {
-            // can unwrap because the func
-            let arg = arg
-                .atom()
-                .expect("only plain identifiers supported as arguments");
+        for &arg in fun.positional_args() {
             let arg = arg.source_range().of(fun.source()).source();
+            scope_vars.push(arg);
+        }
+        if let Some(rest) = fun.rest_arg() {
+            let arg = rest.source_range().of(fun.source()).source();
             scope_vars.push(arg);
         }
         self.scope_vars.push(scope_vars);
@@ -65,7 +65,7 @@ impl<'t, 's> NameCheck<'t, 's> {
     }
 
     fn check_names(
-        &self,
+        &mut self,
         source: Source<'s>,
         code: &'t Form<'s, 't>,
     ) -> Result<(), NameError<'s, 't>> {
@@ -78,6 +78,25 @@ impl<'t, 's> NameCheck<'t, 's> {
                 if let Some(else_form) = if_form.else_form() {
                     self.check_names(source, else_form)?;
                 }
+                Ok(())
+            },
+            Form::LetForm(let_form) => {
+                // first check the values with the surrounding scope
+                for binding in let_form.bindings() {
+                    self.check_names(source, binding.value())?;
+                }
+                // and only then add to scope, because that are the correct semantics for parallel assignment (I think)
+                let mut let_scope = vec![];
+                for binding in let_form.bindings() {
+                    let name = binding.name();
+                    let name = name.fragment(source).source();
+                    let_scope.push(name);
+                }
+                self.scope_vars.push(let_scope);
+                for body in let_form.body() {
+                    self.check_names(source, body)?;
+                }
+                self.scope_vars.pop();
                 Ok(())
             },
             Form::Call(call) => {

@@ -53,6 +53,9 @@ pub enum Instruction {
     ConsumeParam {
         to: PlaceAddress,
     },
+    ConsumeRest {
+        to: PlaceAddress,
+    },
     /// Write a reference to a constant value to a place.
     ///
     /// This is also used to write nil.
@@ -195,6 +198,11 @@ impl InstructionBuilder {
 
     pub fn consume_param(&mut self, to: PlaceAddress) -> &mut Self {
         self.instructions.push(Instruction::ConsumeParam { to });
+        self
+    }
+
+    pub fn consume_rest(&mut self, to: PlaceAddress) -> &mut Self {
+        self.instructions.push(Instruction::ConsumeRest { to });
         self
     }
 

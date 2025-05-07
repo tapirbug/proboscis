@@ -1,11 +1,12 @@
 use std::fmt;
 
-use crate::{parse::{AstNode, Atom, List, TokenKind}, source::Source};
+use crate::{parse::{AstNode, Atom, List, Token, TokenKind}, source::Source};
 
 pub enum Form<'s, 't> {
     /// A variable (not function) name.
     Name(Name<'s, 't>),
     Constant(Constant<'s, 't>),
+    LetForm(LetForm<'s, 't>),
     IfForm(IfForm<'s, 't>),
     Call(Call<'s, 't>)
 }
@@ -33,6 +34,17 @@ pub struct Call<'s, 't> {
     args: Vec<Form<'s, 't>>
 }
 
+pub struct Binding<'s, 't> {
+    name: &'t Atom<'s>,
+    value: Form<'s, 't>
+}
+
+pub struct LetForm<'s, 't> {
+    source: Source<'s>,
+    bindings: Vec<Binding<'s, 't>>,
+    body: Vec<Form<'s, 't>>
+}
+
 impl<'s, 't> Form<'s, 't> {
     pub fn extract(source: Source<'s>, form: &'t AstNode<'s>) -> Result<Form<'s, 't>, FormError<'s, 't>> {
         Ok(match form {
@@ -46,6 +58,9 @@ impl<'s, 't> Form<'s, 't> {
             AstNode::List(non_empty) => {
                 if let Some(if_form) = IfForm::extract_assume_nonempty(source, non_empty)? {
                     return Ok(Form::IfForm(if_form));
+                }
+                if let Some(let_form) = LetForm::extract_assume_nonempty(source, non_empty)? {
+                    return Ok(Form::LetForm(let_form))
                 }
                 Form::Call(Call::extract_assume_nonempty(source, non_empty)?)
             }
@@ -162,6 +177,72 @@ impl<'s, 't> IfForm<'s, 't> {
     }
 }
 
+impl<'s, 't> LetForm<'s, 't> {
+    fn extract_assume_nonempty(source: Source<'s>, form: &'t List<'s>) -> Result<Option<LetForm<'s, 't>>, FormError<'s, 't>> {
+        let mut elements = form.elements().iter();
+
+        let head = elements.next().unwrap();
+        let is_let = match head {
+            AstNode::Atom(first)
+                if first.source_range().of(source).source() == "let" =>
+            {
+                true
+            }
+            _ => false,
+        };
+        if !is_let {
+            // ignore root-level directive that is not defun
+            return Ok(None);
+        }
+        let head = head.atom().unwrap();
+
+        let bindings = elements.next().ok_or_else(|| FormError::LetMissingBindings { source, atom: head })?;
+        let bindings = bindings
+            .list()
+            .ok_or_else(|| FormError::LetBindingsNotList { source, atom: bindings })?;
+        let mut bindings_parsed = vec![];
+        for binding in bindings.elements() {
+            let binding = binding.list().ok_or_else(|| FormError::LetBindingEntryNotList { source, atom: binding })?;
+            if binding.elements().len() < 2 {
+                return Err(FormError::LetBindingEntryTooShort { source, atom: binding });
+            }
+            if binding.elements().len() > 2 {
+                return Err(FormError::LetBindingEntryTooLong { source, atom: binding });
+            }
+            let name = binding.elements()[0].atom().filter(|a| a.token().kind() == TokenKind::Ident)
+                .ok_or_else(|| FormError::LetBindingVarNotIdent { source, atom: &binding.elements()[0] })?;
+            let value = Form::extract(source, &binding.elements()[1])?;
+            bindings_parsed.push(Binding { name, value });
+        }
+
+        let body = &form.elements()[2..];
+        if body.is_empty() {
+            return Err(FormError::LetMissingBody { source, atom: head })
+        }
+        let body = body.iter().map(|f| Form::extract(source, f)).collect::<Result<Vec<_>, _>>()?;
+
+        Ok(Some(LetForm { source, bindings: bindings_parsed, body }))
+    }
+
+    pub fn bindings(&self) -> &[Binding<'s, 't>] {
+        &self.bindings
+    }
+
+    pub fn body(&self) -> &[Form<'s, 't>] {
+        &self.body
+    }
+}
+
+impl<'s, 't> Binding<'s, 't> {
+    pub fn name(&self) -> &'t Atom<'s> {
+        self.name
+    }
+
+    pub fn value(&self) -> &Form<'s, 't> {
+        &self.value
+    }
+}
+
 impl<'s, 't> Call<'s, 't> {
     /// The call form matches everything else, so we have to try it last.
     /// 
@@ -210,6 +291,34 @@ pub enum FormError<'s, 't> {
         source: Source<'s>,
         form: &'t AstNode<'s>
     },
+    LetMissingBindings {
+        source: Source<'s>,
+        atom: &'t Atom<'s>
+    },
+    LetBindingsNotList {
+        source: Source<'s>,
+        atom: &'t AstNode<'s>
+    },
+    LetBindingEntryNotList {
+        source: Source<'s>,
+        atom: &'t AstNode<'s>
+    },
+    LetBindingEntryTooShort {
+        source: Source<'s>,
+        atom: &'t List<'s>
+    },
+    LetBindingEntryTooLong {
+        source: Source<'s>,
+        atom: &'t List<'s>
+    },
+    LetBindingVarNotIdent {
+        source: Source<'s>,
+        atom: &'t AstNode<'s>
+    },
+    LetMissingBody {
+        source: Source<'s>,
+        atom: &'t Atom<'s>
+    },
     CallTargetNotConstant {
         source: Source<'s>,
         form: &'t AstNode<'s>
@@ -231,10 +340,53 @@ impl<'s, 't> fmt::Display for FormError<'s, 't> {
                 writeln!(f, "if form has extra element after then part:")?;
                 writeln!(f, "{}", form.fragment(*source).source_context())
             },
+            FormError::LetMissingBindings { source, atom } => {
+                writeln!(f, "let form does not define a bindings list:")?;
+                writeln!(f, "{}", atom.fragment(*source).source_context())
+            },
+            FormError::LetMissingBody { source, atom } => {
+                writeln!(f, "let form does not define a body:")?;
+                writeln!(f, "{}", atom.fragment(*source).source_context())
+            },
             FormError::CallTargetNotConstant { source, form } => {
                 writeln!(f, "target of function call is not constant:")?;
                 writeln!(f, "{}", form.fragment(*source).source_context())
-            }
+            },
+            FormError::LetBindingsNotList {
+                source,
+                atom
+            } => {
+                writeln!(f, "let form must define bindings as a list:")?;
+                writeln!(f, "{}", atom.fragment(*source).source_context())
+            },
+            FormError::LetBindingEntryNotList {
+                source,
+                atom
+            } => {
+                writeln!(f, "let form defines a binding that is not a list:")?;
+                writeln!(f, "{}", atom.fragment(*source).source_context())
+            },
+            FormError::LetBindingEntryTooShort {
+                source,
+                atom
+            } => {
+                writeln!(f, "let form binding is missing a value:")?;
+                writeln!(f, "{}", atom.fragment(*source).source_context())
+            },
+            FormError::LetBindingEntryTooLong {
+                source,
+                atom
+            } => {
+                writeln!(f, "let form binding has superfluous values:")?;
+                writeln!(f, "{}", atom.fragment(*source).source_context())
+            },
+            FormError::LetBindingVarNotIdent {
+                source,
+                atom
+            } => {
+                writeln!(f, "let form binding must define an identifier as the name for the binding:")?;
+                writeln!(f, "{}", atom.fragment(*source).source_context())
+            },
         }
     }
 }

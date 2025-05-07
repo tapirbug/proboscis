@@ -11,9 +11,13 @@ use crate::{
 
 use super::err::CommandResult;
 
+const LISP_RT: &str = "rt/rt.lisp";
+
 pub fn compile(args: &TopLevelArgs) -> CommandResult<()> {
     assert!(matches!(args.output_format(), OutputFormat::Wat));
     let mut sources = SourceSet::new();
+    // implements functions like list and others
+    sources.load(LISP_RT)?;
     // TODO try to collect more errors in each step
     for file in args.files() {
         sources.load(file)?;

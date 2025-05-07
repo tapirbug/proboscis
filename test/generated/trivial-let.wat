@@ -1,11 +1,11 @@
 (module
 	(import "js" "mem" (memory 1))
 	(import "console" "log" (func $log (param i32 i32)))
-	(data (i32.const 0) "\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\04\00\00\00\01\00\00\00T\10\00\00\00\03\00\00\00\04\00\00\00\02\00\00\00\05\00\00\00Sheep\04\00\00\00\07\00\00\00Tapirus")
-	(global $stack_bottom (mut i32) (i32.const 65))
-	(global $stack_top i32 (i32.const 10305))
-	(global $local_offset (mut i32) (i32.const 65))
-	(global $heap_start (mut i32) (i32.const 10305))
+	(data (i32.const 0) "\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\04\00\00\00\01\00\00\00T\10\00\00\00\02\00\00\00\08\00\00\00tap tap!")
+	(global $stack_bottom (mut i32) (i32.const 45))
+	(global $stack_top i32 (i32.const 10285))
+	(global $local_offset (mut i32) (i32.const 45))
+	(global $heap_start (mut i32) (i32.const 10285))
 
 ;; rt.wat start
 ;; ============
@@ -661,7 +661,7 @@
 	)
 	(func $fun10 (export "main") (param i32) (result i32) (local i32)
 		global.get $stack_bottom
-		i32.const 24
+		i32.const 12
 		i32.add
 		global.set $stack_bottom
 		;; LoadData { data: DataAddress(29), to: PlaceAddress { mode: Local, offset: 0 } }
@@ -670,60 +670,14 @@
 		i32.add
 		i32.const 29
 		i32.store
-		;; EnterBlock
-		(loop $block_1_start (block $block_1_end
-		;; EnterBlock
-		(loop $block_2_start (block $block_2_end
-		;; BreakIfNotNil { if_not_nil: PlaceAddress { mode: Local, offset: 0 }, block_up: 1 }
-		global.get $local_offset
-		i32.const 0
-		i32.add
-		i32.load
-		br_if $block_2_end
-		;; LoadData { data: DataAddress(37), to: PlaceAddress { mode: Local, offset: 8 } }
-		global.get $local_offset
-		i32.const 8
-		i32.add
-		i32.const 37
-		i32.store
-		;; WritePlace { from: PlaceAddress { mode: Local, offset: 8 }, to: PlaceAddress { mode: Local, offset: 4 } }
+		;; WritePlace { from: PlaceAddress { mode: Global, offset: 12 }, to: PlaceAddress { mode: Local, offset: 4 } }
 		global.get $local_offset
 		i32.const 4
 		i32.add
-		global.get $local_offset
-		i32.const 8
-		i32.add
-		i32.load
-		i32.store
-		;; Break { block_up: 2 }
-		br $block_1_end
-		;; ExitBlock
-		));; end block
-		;; LoadData { data: DataAddress(50), to: PlaceAddress { mode: Local, offset: 12 } }
-		global.get $local_offset
-		i32.const 12
-		i32.add
-		i32.const 50
-		i32.store
-		;; WritePlace { from: PlaceAddress { mode: Local, offset: 12 }, to: PlaceAddress { mode: Local, offset: 4 } }
-		global.get $local_offset
-		i32.const 4
-		i32.add
-		global.get $local_offset
-		i32.const 12
-		i32.add
-		i32.load
-		i32.store
-		;; ExitBlock
-		));; end block
-		;; WritePlace { from: PlaceAddress { mode: Global, offset: 12 }, to: PlaceAddress { mode: Local, offset: 16 } }
-		global.get $local_offset
-		i32.const 16
-		i32.add
 		i32.const 12
 		i32.load
 		i32.store
-		;; Cons { car: PlaceAddress { mode: Local, offset: 4 }, cdr: PlaceAddress { mode: Local, offset: 16 }, to: PlaceAddress { mode: Local, offset: 16 } }
+		;; Cons { car: PlaceAddress { mode: Local, offset: 0 }, cdr: PlaceAddress { mode: Local, offset: 4 }, to: PlaceAddress { mode: Local, offset: 4 } }
 		global.get $heap_start
 		global.get $heap_start
 		i32.const 12
@@ -737,7 +691,7 @@
 		i32.const 4
 		i32.add
 		global.get $local_offset
-		i32.const 4
+		i32.const 0
 		i32.add
 		i32.load
 		i32.store
@@ -745,16 +699,16 @@
 		i32.const 8
 		i32.add
 		global.get $local_offset
-		i32.const 16
+		i32.const 4
 		i32.add
 		i32.load
 		i32.store
 		global.get $local_offset
-		i32.const 16
+		i32.const 4
 		i32.add
 		local.get 1
 		i32.store
-		;; Cons { car: PlaceAddress { mode: Global, offset: 25 }, cdr: PlaceAddress { mode: Local, offset: 16 }, to: PlaceAddress { mode: Local, offset: 16 } }
+		;; Cons { car: PlaceAddress { mode: Global, offset: 25 }, cdr: PlaceAddress { mode: Local, offset: 4 }, to: PlaceAddress { mode: Local, offset: 4 } }
 		global.get $heap_start
 		global.get $heap_start
 		i32.const 12
@@ -774,22 +728,22 @@
 		i32.const 8
 		i32.add
 		global.get $local_offset
-		i32.const 16
+		i32.const 4
 		i32.add
 		i32.load
 		i32.store
 		global.get $local_offset
-		i32.const 16
+		i32.const 4
 		i32.add
 		local.get 1
 		i32.store
-		;; Call { function: StaticFunctionAddress(0), params: PlaceAddress { mode: Local, offset: 16 }, to: PlaceAddress { mode: Local, offset: 20 } }
+		;; Call { function: StaticFunctionAddress(0), params: PlaceAddress { mode: Local, offset: 4 }, to: PlaceAddress { mode: Local, offset: 8 } }
 		global.get $local_offset
 		global.get $local_offset
-		i32.const 20
+		i32.const 8
 		i32.add
 		global.get $local_offset
-		i32.const 16
+		i32.const 4
 		i32.add
 		i32.load
 		global.get $stack_bottom
@@ -797,18 +751,18 @@
 		call $fun0
 		i32.store
 		global.set $local_offset
-		;; Return { value: PlaceAddress { mode: Local, offset: 20 } }
+		;; Return { value: PlaceAddress { mode: Local, offset: 8 } }
 		global.get $local_offset
-		i32.const 20
+		i32.const 8
 		i32.add
 		i32.load
 		global.get $stack_bottom
-		i32.const 24
+		i32.const 12
 		i32.sub
 		global.set $stack_bottom
 		return
 		global.get $stack_bottom
-		i32.const 24
+		i32.const 12
 		i32.sub
 		global.set $stack_bottom
 	)

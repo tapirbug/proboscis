@@ -174,7 +174,7 @@ impl<'s> TokenStream<'s> for Lexer<'s> {
 fn is_identifier_start(c: char) -> bool {
     matches!(
         c,
-        '+' | '-' | '/' | '*' | '.' | '_' | '\\' | '<' | '>' | '=' | '?'
+        '+' | '-' | '/' | '*' | '.' | '_' | '\\' | '<' | '>' | '=' | '?' | '&'
     ) || c.is_alphabetic()
 }
 
@@ -413,7 +413,7 @@ mod test {
 
     #[test]
     fn idents() {
-        let source_set = SourceSet::new_debug("sum product _ *");
+        let source_set = SourceSet::new_debug("sum product _ * &rest");
         let source = source_set.one();
 
         let mut lexer = Lexer::new(source);
@@ -445,6 +445,14 @@ mod test {
         let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::Ident));
         assert_eq!(token.fragment(source).source(), "*");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::Ws));
+        assert_eq!(token.fragment(source).source(), " ");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::Ident));
+        assert_eq!(token.fragment(source).source(), "&rest");
     }
 
     #[test]

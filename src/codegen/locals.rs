@@ -66,6 +66,9 @@ pub fn local_places_byte_len(instructions: &[Instruction]) -> i32 {
             Instruction::ConsumeParam {
                 to,
             } => { locals.must_contain(to); },
+            Instruction::ConsumeRest { to } => {
+                locals.must_contain(to);
+            }
             Instruction::LoadData {
                 data,
                 to,

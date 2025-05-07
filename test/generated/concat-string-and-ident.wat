@@ -633,7 +633,33 @@
 		i32.sub
 		global.set $stack_bottom
 	)
-	(func $fun9 (export "main") (param i32) (result i32) (local i32)
+	(func $fun9 (export "list") (param i32) (result i32) (local i32)
+		global.get $stack_bottom
+		i32.const 4
+		i32.add
+		global.set $stack_bottom
+		;; ConsumeRest { to: PlaceAddress { mode: Local, offset: 0 } }
+		global.get $local_offset
+		i32.const 0
+		i32.add
+		local.get 0
+		i32.store
+		;; Return { value: PlaceAddress { mode: Local, offset: 0 } }
+		global.get $local_offset
+		i32.const 0
+		i32.add
+		i32.load
+		global.get $stack_bottom
+		i32.const 4
+		i32.sub
+		global.set $stack_bottom
+		return
+		global.get $stack_bottom
+		i32.const 4
+		i32.sub
+		global.set $stack_bottom
+	)
+	(func $fun10 (export "main") (param i32) (result i32) (local i32)
 		global.get $stack_bottom
 		i32.const 24
 		i32.add

@@ -184,6 +184,14 @@ fn write_function<W: Write>(w: &mut W, function: &Function, idx: usize) -> io::R
                 write!(w, "\t\ti32.load\n")?;
                 write!(w, "\t\tlocal.set 0\n")?;
             },
+            Instruction::ConsumeRest { to } => {
+                // load address of target place
+                write_load_place_self_address(w, to)?;
+                // load the passed location of argument list
+                write!(w, "\t\tlocal.get 0\n")?;
+                // and directly store a reference to the list
+                write!(w, "\t\ti32.store\n")?;
+            },
             Instruction::ConcatStringLike { left, right, to } => {
                 write_load_place_self_address(w, to)?;
                 write_load_place_referee(w, left)?;
