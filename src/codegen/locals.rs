@@ -59,6 +59,9 @@ pub fn local_places_byte_len(instructions: &[Instruction]) -> i32 {
             Instruction::BreakIfNotNil {
                 if_not_nil, ..
             } => { locals.must_contain(if_not_nil); },
+            Instruction::BreakIfNil { if_nil, .. } => {
+                locals.must_contain(if_nil);
+            }
             Instruction::ContinueIfNotNil {
                 if_not_nil, ..
             } => { locals.must_contain(if_not_nil); },

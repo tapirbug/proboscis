@@ -84,6 +84,7 @@ fn write_function<W: Write>(w: &mut W, function: &Function, idx: usize) -> io::R
                 write_load_place_referee(w, list)?;
                 // skip one to go to car after type and load
                 write!(w, "\t\ti32.const {}\n", mem::size_of::<i32>())?;
+                write!(w, "\t\ti32.add\n")?;
                 write!(w, "\t\ti32.load\n")?;
                 write!(w, "\t\ti32.store\n")?;
             },
@@ -92,7 +93,38 @@ fn write_function<W: Write>(w: &mut W, function: &Function, idx: usize) -> io::R
                 write_load_place_referee(w, list)?;
                 // skip two to go to cdr after type and car and load
                 write!(w, "\t\ti32.const {}\n", 2 * mem::size_of::<i32>())?;
+                write!(w, "\t\ti32.add\n")?;
                 write!(w, "\t\ti32.load\n")?;
+                write!(w, "\t\ti32.store\n")?;
+            },
+            Instruction::Cons { car, cdr, to } => {
+                // type tag, car address, cdr address
+                write_heap_alloc(w, mem::size_of::<i32>() * 3)?;
+                write!(w, "\t\tlocal.set 1\n")?; // remember the allocation
+
+                // write tag at offset 0
+                write!(w, "\t\tlocal.get 1\n")?;
+                let tag = type_to_tag(IrDataType::ListNode);
+                write!(w, "\t\ti32.const {}\n", tag)?;
+                write!(w, "\t\ti32.store\n")?;
+
+                // load car address and write at offset 1
+                write!(w, "\t\tlocal.get 1\n")?;
+                write!(w, "\t\ti32.const {}\n", mem::size_of::<i32>())?;
+                write!(w, "\t\ti32.add\n")?;
+                write_load_place_referee(w, car)?;
+                write!(w, "\t\ti32.store\n")?;
+
+                // load cdr address and write at offset 2
+                write!(w, "\t\tlocal.get 1\n")?;
+                write!(w, "\t\ti32.const {}\n", 2 * mem::size_of::<i32>())?;
+                write!(w, "\t\ti32.add\n")?;
+                write_load_place_referee(w, cdr)?;
+                write!(w, "\t\ti32.store\n")?;
+
+                // finally, remember the list in the target place
+                write_load_place_self_address(w, to)?;
+                write!(w, "\t\tlocal.get 1\n")?;
                 write!(w, "\t\ti32.store\n")?;
             },
             Instruction::WritePlace { from, to } => {
@@ -135,36 +167,6 @@ fn write_function<W: Write>(w: &mut W, function: &Function, idx: usize) -> io::R
                 write!(w, "\t\ti32.add\n")?;
                 write!(w, "\t\ti32.load\n")?;
                 write!(w, "\t\tcall $log\n")?;
-            },
-            Instruction::Cons { car, cdr, to } => {
-                // type tag, car address, cdr address
-                write_heap_alloc(w, mem::size_of::<i32>() * 3)?;
-                write!(w, "\t\tlocal.set 1\n")?; // remember the allocation
-
-                // write tag at offset 0
-                write!(w, "\t\tlocal.get 1\n")?;
-                let tag = type_to_tag(IrDataType::ListNode);
-                write!(w, "\t\ti32.const {}\n", tag)?;
-                write!(w, "\t\ti32.store\n")?;
-
-                // load car address and write at offset 1
-                write!(w, "\t\tlocal.get 1\n")?;
-                write!(w, "\t\ti32.const {}\n", mem::size_of::<i32>())?;
-                write!(w, "\t\ti32.add\n")?;
-                write_load_place_referee(w, car)?;
-                write!(w, "\t\ti32.store\n")?;
-
-                // load cdr address and write at offset 2
-                write!(w, "\t\tlocal.get 1\n")?;
-                write!(w, "\t\ti32.const {}\n", 2 * mem::size_of::<i32>())?;
-                write!(w, "\t\ti32.add\n")?;
-                write_load_place_referee(w, cdr)?;
-                write!(w, "\t\ti32.store\n")?;
-
-                // finally, remember the list in the target place
-                write_load_place_self_address(w, to)?;
-                write!(w, "\t\tlocal.get 1\n")?;
-                write!(w, "\t\ti32.store\n")?;
             },
             Instruction::ConsumeParam { to } => {
                 // load address of target place
@@ -246,6 +248,13 @@ fn write_function<W: Write>(w: &mut W, function: &Function, idx: usize) -> io::R
                 let target_block = block_stack[block_stack.len() - (block_up as usize)];
                 write!(w, "\t\tbr_if $block_{}_end\n", target_block)?;
             },
+            Instruction::BreakIfNil { if_nil, block_up } => {
+                write_load_place_referee(w, if_nil)?;
+                write!(w, "\t\ti32.const 0\n")?; // assuming nil has address zero
+                write!(w, "\t\ti32.eq\n")?;
+                let target_block = block_stack[block_stack.len() - (block_up as usize)];
+                write!(w, "\t\tbr_if $block_{}_end\n", target_block)?;
+            }
             Instruction::ContinueIfNotNil { block_up,  if_not_nil} => {
                 write_load_place_referee(w, if_not_nil)?;
                 let target_block = block_stack[block_stack.len() - (block_up as usize)];

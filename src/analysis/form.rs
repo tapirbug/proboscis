@@ -8,6 +8,8 @@ pub enum Form<'s, 't> {
     Constant(Constant<'s, 't>),
     LetForm(LetForm<'s, 't>),
     IfForm(IfForm<'s, 't>),
+    AndForm(AndForm<'s, 't>),
+    OrForm(OrForm<'s, 't>),
     Call(Call<'s, 't>)
 }
 
@@ -26,6 +28,16 @@ pub struct IfForm<'s, 't> {
     test: Box<Form<'s, 't>>,
     then_form: Box<Form<'s, 't>>,
     else_form: Option<Box<Form<'s, 't>>>
+}
+
+pub struct AndForm<'s, 't> {
+    source: Source<'s>,
+    forms: Vec<Form<'s, 't>>
+}
+
+pub struct OrForm<'s, 't> {
+    source: Source<'s>,
+    forms: Vec<Form<'s, 't>>
 }
 
 pub struct Call<'s, 't> {
@@ -58,6 +70,12 @@ impl<'s, 't> Form<'s, 't> {
             AstNode::List(non_empty) => {
                 if let Some(if_form) = IfForm::extract_assume_nonempty(source, non_empty)? {
                     return Ok(Form::IfForm(if_form));
+                }
+                if let Some(and_form) = AndForm::extract_assume_nonempty(source, non_empty)? {
+                    return Ok(Form::AndForm(and_form));
+                }
+                if let Some(or_form) = OrForm::extract_assume_nonempty(source, non_empty)? {
+                    return Ok(Form::OrForm(or_form));
                 }
                 if let Some(let_form) = LetForm::extract_assume_nonempty(source, non_empty)? {
                     return Ok(Form::LetForm(let_form))
@@ -174,6 +192,70 @@ impl<'s, 't> IfForm<'s, 't> {
 
     pub fn else_form(&self) -> Option<&Form<'s, 't>> {
         self.else_form.as_ref().map(|e| e.as_ref())
+    }
+}
+
+impl<'s, 't> AndForm<'s, 't> {
+    fn extract_assume_nonempty(source: Source<'s>, form: &'t List<'s>) -> Result<Option<AndForm<'s, 't>>, FormError<'s, 't>> {
+        let mut elements = form.elements().iter();
+
+        let head = elements.next().unwrap();
+        let is_and = match head {
+            AstNode::Atom(first)
+                if first.source_range().of(source).source() == "and" =>
+            {
+                true
+            }
+            _ => false,
+        };
+        if !is_and {
+            return Ok(None);
+        }
+
+        let forms = elements.map(|a| Form::extract(source, a))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(Some(AndForm { source, forms }))
+    }
+
+    pub fn source(&self) -> Source<'s> {
+        self.source
+    }
+
+    pub fn forms(&self) -> &[Form<'s, 't>] {
+        &self.forms
+    }
+}
+
+impl<'s, 't> OrForm<'s, 't> {
+    fn extract_assume_nonempty(source: Source<'s>, form: &'t List<'s>) -> Result<Option<OrForm<'s, 't>>, FormError<'s, 't>> {
+        let mut elements = form.elements().iter();
+
+        let head = elements.next().unwrap();
+        let is_or = match head {
+            AstNode::Atom(first)
+                if first.source_range().of(source).source() == "or" =>
+            {
+                true
+            }
+            _ => false,
+        };
+        if !is_or {
+            return Ok(None);
+        }
+
+        let forms = elements.map(|a| Form::extract(source, a))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(Some(OrForm { source, forms }))
+    }
+
+    pub fn source(&self) -> Source<'s> {
+        self.source
+    }
+
+    pub fn forms(&self) -> &[Form<'s, 't>] {
+        &self.forms
     }
 }
 

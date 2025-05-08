@@ -80,6 +80,18 @@ impl<'t, 's> NameCheck<'t, 's> {
                 }
                 Ok(())
             },
+            Form::AndForm(and) => {
+                for code in and.forms() {
+                    self.check_names(source, code)?;
+                }
+                Ok(())
+            },
+            Form::OrForm(or) => {
+                for code in or.forms() {
+                    self.check_names(source, code)?;
+                }
+                Ok(())
+            },
             Form::LetForm(let_form) => {
                 // first check the values with the surrounding scope
                 for binding in let_form.bindings() {

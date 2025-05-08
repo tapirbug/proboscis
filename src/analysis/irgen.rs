@@ -4,7 +4,7 @@ use scope::VariableScope;
 
 use crate::{analysis::FunctionDefinition, ir::{DataAddress, FunctionsBuilder, PlaceAddress, Program, StaticDataBuilder, StaticFunctionAddress}, parse::{AstNode, Atom, List, TokenKind}, source::Source};
 
-use super::{builtin::generate_builtin_functions, form::{self, Call, Form, IfForm, LetForm}, strings::decode_string, SemanticAnalysis};
+use super::{builtin::generate_builtin_functions, form::{self, AndForm, Call, Form, IfForm, LetForm, OrForm}, strings::decode_string, SemanticAnalysis};
 
 mod scope;
 
@@ -14,6 +14,8 @@ pub struct IrGen<'a, 's, 't> {
     functions: FunctionsBuilder,
     nil_address: DataAddress,
     nil_place: PlaceAddress,
+    t_address: DataAddress,
+    t_place: PlaceAddress,
     function_addresses: HashMap<String, StaticFunctionAddress>,
     global_string_addresses: HashMap<Cow<'s, str>, DataAddress>,
     /// Identifiers for static data, e.g. 'string for concatenate
@@ -41,6 +43,8 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
             functions,
             nil_address,
             nil_place,
+            t_address,
+            t_place,
             function_addresses,
             global_string_addresses: HashMap::new(),
             global_identifier_addresses: HashMap::new(),
@@ -196,6 +200,8 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
                 place_address
             },
             Form::IfForm(form) => self.generate_code_for_if_form(source, form, addr, next_local_place_address)?,
+            Form::AndForm(form) => self.generate_code_for_and_form(source, form, addr, next_local_place_address)?,
+            Form::OrForm(form) => self.generate_code_for_or_form(source, form, addr, next_local_place_address)?,
             Form::LetForm(let_form) => self.generate_code_for_let_form(source, let_form, addr, next_local_place_address)?,
             Form::Call(call) => self.generate_code_for_function_application(source, call, addr, next_local_place_address)?,
         })
@@ -205,7 +211,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         // generate something like: result = test(); a:{ b:{ if result != nil { break b; } … else code …  break a } … then code … }
 
         // evaluate the test
-        let test_result_and_eval_result_place = self.generate_code(source, form.test_form(), addr, next_local_place_address)?;
+        let test_result_place = self.generate_code(source, form.test_form(), addr, next_local_place_address)?;
         let result_place = PlaceAddress::new_local(*next_local_place_address);
         *next_local_place_address += mem::size_of::<i32>() as i32;
 
@@ -213,7 +219,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         self.functions.implement_function(addr)
             .enter_block()
                 .enter_block()
-                    .break_if_not_nil(1, test_result_and_eval_result_place);
+                    .break_if_not_nil(1, test_result_place);
         let else_result_place = match form.else_form() {
             Some(else_form) => self.generate_code(source, else_form, addr, next_local_place_address)?,
             None => self.nil_place
@@ -227,6 +233,60 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
 
         self.functions.implement_function(addr).write_place(then_result_place, result_place).exit_block();
         Ok(result_place)
+    }
+
+    fn generate_code_for_and_form(&mut self, source: Source<'s>, form: &AndForm<'s, 't>, addr: StaticFunctionAddress, next_local_place_address: &mut i32)-> Result<PlaceAddress, IrGenError<'s, 't>> {
+        match form.forms().len() {
+            0 => Ok(self.t_place),
+            1 => self.generate_code(source, &form.forms()[0], addr, next_local_place_address),
+            // short-circuiting makes sense for two or more forms
+            _ => {
+                let result_place = PlaceAddress::new_local(*next_local_place_address);
+                *next_local_place_address += mem::size_of::<i32>() as i32;
+                
+                self.functions.implement_function(addr)
+                    .load_data(self.t_address, result_place)
+                    .enter_block();
+
+                for form in form.forms() {
+                    let form_result = self.generate_code(source, form, addr, next_local_place_address)?;
+                    self.functions.implement_function(addr)
+                        .write_place(form_result, result_place)
+                        .break_if_nil(1, result_place);
+                }
+
+                self.functions.implement_function(addr).exit_block();
+
+                Ok(result_place)
+            }
+        }
+    }
+
+    fn generate_code_for_or_form(&mut self, source: Source<'s>, form: &OrForm<'s, 't>, addr: StaticFunctionAddress, next_local_place_address: &mut i32)-> Result<PlaceAddress, IrGenError<'s, 't>> {
+        match form.forms().len() {
+            0 => Ok(self.nil_place),
+            1 => self.generate_code(source, &form.forms()[0], addr, next_local_place_address),
+            // short-circuiting makes sense for two or more forms
+            _ => {
+                let result_place = PlaceAddress::new_local(*next_local_place_address);
+                *next_local_place_address += mem::size_of::<i32>() as i32;
+                
+                self.functions.implement_function(addr)
+                    .load_data(self.nil_address, result_place)
+                    .enter_block();
+
+                for form in form.forms() {
+                    let form_result = self.generate_code(source, form, addr, next_local_place_address)?;
+                    self.functions.implement_function(addr)
+                        .write_place(form_result, result_place)
+                        .break_if_not_nil(1, result_place);
+                }
+
+                self.functions.implement_function(addr).exit_block();
+
+                Ok(result_place)
+            }
+        }
     }
 
     fn generate_code_for_let_form(&mut self, source: Source<'s>, form: &LetForm<'s, 't>, addr: StaticFunctionAddress, next_local_place_address: &mut i32)-> Result<PlaceAddress, IrGenError<'s, 't>> {
@@ -263,7 +323,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         *next_local_place_address += mem::size_of::<i32>() as i32;
         // start with empty argument list
         let instructions = self.functions.implement_function(addr);
-        instructions.write_place(self.nil_place, arguments_place);
+        instructions.load_data(self.nil_address, arguments_place);
         // and then start pushing elements from the back to the front
         for &arg in evaluated_arg_places.iter().rev() {
             instructions.cons(arg, arguments_place, arguments_place);

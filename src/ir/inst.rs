@@ -40,6 +40,10 @@ pub enum Instruction {
         if_not_nil: PlaceAddress,
         block_up: u32,
     },
+    BreakIfNil {
+        if_nil: PlaceAddress,
+        block_up: u32,
+    },
     NilIfZero {
         check: PlaceAddress,
         to: PlaceAddress
@@ -173,6 +177,11 @@ impl InstructionBuilder {
 
     pub fn break_if_not_nil(&mut self, block_up: u32, if_not_nil: PlaceAddress) -> &mut Self {
         self.instructions.push(Instruction::BreakIfNotNil { block_up, if_not_nil });
+        self
+    }
+
+    pub fn break_if_nil(&mut self, block_up: u32, if_nil: PlaceAddress) -> &mut Self {
+        self.instructions.push(Instruction::BreakIfNil { if_nil, block_up });
         self
     }
 
