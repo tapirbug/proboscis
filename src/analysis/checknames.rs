@@ -1,13 +1,33 @@
 use std::fmt;
 
-use crate::{parse::{AstNode, Atom, List, TokenKind}, source::Source};
+use crate::{
+    parse::{AstNode, Atom, List, TokenKind},
+    source::Source,
+};
 
-use super::{form::Form, semantic::SemanticAnalysis, FunctionDefinition, GlobalDefinition};
+use super::{FunctionDefinition, GlobalDefinition, form::Form, semantic::SemanticAnalysis};
 
 const GLOBAL_FUNCTIONS: &[&str] = &[
-    "concat-string-like-2", "type-tag-of", "cons", "add-2", "sub-2", "nil-if-0",
-    "car", "cdr", "format", "if", "let", "list", "null", ">", ">=", "=", ">",
-    ">=", "/=", // not equal
+    "concat-string-like-2",
+    "type-tag-of",
+    "cons",
+    "add-2",
+    "sub-2",
+    "nil-if-0",
+    "car",
+    "cdr",
+    "format",
+    "if",
+    "let",
+    "list",
+    "null",
+    "apply",
+    ">",
+    ">=",
+    "=",
+    ">",
+    ">=",
+    "/=", // not equal
 ];
 const GLOBAL_VARS: &[&str] = &["nil", "t"];
 
@@ -71,6 +91,7 @@ impl<'t, 's> NameCheck<'t, 's> {
     ) -> Result<(), NameError<'s, 't>> {
         match code {
             Form::Name(name) => self.check_variable_ident(source, name.ident()),
+            Form::FunctionName(func_name) => self.check_fn_ident(source, func_name.ident()),
             Form::Constant(_) => Ok(()), // constants don't have any names that need to be checked
             Form::IfForm(if_form) => {
                 self.check_names(source, if_form.test_form())?;
@@ -79,19 +100,19 @@ impl<'t, 's> NameCheck<'t, 's> {
                     self.check_names(source, else_form)?;
                 }
                 Ok(())
-            },
+            }
             Form::AndForm(and) => {
                 for code in and.forms() {
                     self.check_names(source, code)?;
                 }
                 Ok(())
-            },
+            }
             Form::OrForm(or) => {
                 for code in or.forms() {
                     self.check_names(source, code)?;
                 }
                 Ok(())
-            },
+            }
             Form::LetForm(let_form) => {
                 // first check the values with the surrounding scope
                 for binding in let_form.bindings() {
@@ -110,14 +131,18 @@ impl<'t, 's> NameCheck<'t, 's> {
                 }
                 self.scope_vars.pop();
                 Ok(())
-            },
+            }
             Form::Call(call) => {
                 self.check_fn_ident(source, call.function())?;
                 for arg in call.args() {
                     self.check_names(source, arg)?;
                 }
                 Ok(())
-            },
+            }
+            Form::ApplyStatic(apply) => {
+                self.check_fn_ident(source, apply.function_ident())?;
+                self.check_names(source, apply.args())
+            }
         }
     }
 
@@ -126,7 +151,12 @@ impl<'t, 's> NameCheck<'t, 's> {
         source: Source<'s>,
         ident_atom: &'t Atom<'s>,
     ) -> Result<(), NameError<'s, 't>> {
-        let ident_str = ident_atom.source_range().of(source).source();
+        let ident_str = if matches!(ident_atom.token().kind(), TokenKind::FuncIdent) {
+            ident_atom.source_range().of(source).source()[2..].trim()
+        } else {
+            // normal identifiers verbatim
+            ident_atom.source_range().of(source).source()
+        };
         for defined_fn in self.functions {
             let defined_fn_ident = defined_fn
                 .name()

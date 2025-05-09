@@ -1,6 +1,4 @@
-use super::{
-    data::DataAddress, func::StaticFunctionAddress, place::PlaceAddress,
-};
+use super::{data::DataAddress, func::StaticFunctionAddress, place::PlaceAddress};
 use std::mem;
 
 #[derive(Debug, Clone, Copy)]
@@ -13,7 +11,7 @@ pub enum Instruction {
     },
     /// Builtin to print a string, with no typechecking.
     CallPrint {
-        string: PlaceAddress
+        string: PlaceAddress,
     },
     // copies the given place address to the return value and returns from
     // the function
@@ -46,7 +44,7 @@ pub enum Instruction {
     },
     NilIfZero {
         check: PlaceAddress,
-        to: PlaceAddress
+        to: PlaceAddress,
     },
     // mark the end of a block in code
     ExitBlock,
@@ -110,14 +108,14 @@ pub enum Instruction {
     ConcatStringLike {
         left: PlaceAddress,
         right: PlaceAddress,
-        to: PlaceAddress
+        to: PlaceAddress,
     },
     /// Gets the type tag of the thing referred to by of, and writes an integer
     /// with the type tag to `to`.
     LoadTypeTag {
         of: PlaceAddress,
-        to: PlaceAddress
-    }
+        to: PlaceAddress,
+    },
 }
 
 pub struct InstructionBuilder {
@@ -146,7 +144,8 @@ impl InstructionBuilder {
     }
 
     pub fn call_print(&mut self, value: PlaceAddress) -> &mut Self {
-        self.instructions.push(Instruction::CallPrint { string: value });
+        self.instructions
+            .push(Instruction::CallPrint { string: value });
         self
     }
 
@@ -171,17 +170,24 @@ impl InstructionBuilder {
     }
 
     pub fn continue_if_not_nil(&mut self, block_up: u32, if_not_nil: PlaceAddress) -> &mut Self {
-        self.instructions.push(Instruction::ContinueIfNotNil { block_up, if_not_nil });
+        self.instructions.push(Instruction::ContinueIfNotNil {
+            block_up,
+            if_not_nil,
+        });
         self
     }
 
     pub fn break_if_not_nil(&mut self, block_up: u32, if_not_nil: PlaceAddress) -> &mut Self {
-        self.instructions.push(Instruction::BreakIfNotNil { block_up, if_not_nil });
+        self.instructions.push(Instruction::BreakIfNotNil {
+            block_up,
+            if_not_nil,
+        });
         self
     }
 
     pub fn break_if_nil(&mut self, block_up: u32, if_nil: PlaceAddress) -> &mut Self {
-        self.instructions.push(Instruction::BreakIfNil { if_nil, block_up });
+        self.instructions
+            .push(Instruction::BreakIfNil { if_nil, block_up });
         self
     }
 
@@ -215,61 +221,42 @@ impl InstructionBuilder {
         self
     }
 
-    pub fn concat_string_like(&mut self, left: PlaceAddress, right: PlaceAddress, to: PlaceAddress) -> &mut Self {
-        self.instructions.push(Instruction::ConcatStringLike { left, right, to });
+    pub fn concat_string_like(
+        &mut self,
+        left: PlaceAddress,
+        right: PlaceAddress,
+        to: PlaceAddress,
+    ) -> &mut Self {
+        self.instructions
+            .push(Instruction::ConcatStringLike { left, right, to });
         self
     }
 
-    pub fn load_data(
-        &mut self,
-        data: DataAddress,
-        to: PlaceAddress,
-    ) -> &mut Self {
+    pub fn load_data(&mut self, data: DataAddress, to: PlaceAddress) -> &mut Self {
         self.instructions.push(Instruction::LoadData { data, to });
         self
     }
 
-    pub fn write_place(
-        &mut self,
-        from: PlaceAddress,
-        to: PlaceAddress,
-    ) -> &mut Self {
+    pub fn write_place(&mut self, from: PlaceAddress, to: PlaceAddress) -> &mut Self {
         self.instructions.push(Instruction::WritePlace { from, to });
         self
     }
-    pub fn cons(
-        &mut self,
-        car: PlaceAddress,
-        cdr: PlaceAddress,
-        to: PlaceAddress,
-    ) -> &mut Self {
+    pub fn cons(&mut self, car: PlaceAddress, cdr: PlaceAddress, to: PlaceAddress) -> &mut Self {
         self.instructions.push(Instruction::Cons { car, cdr, to });
         self
     }
 
-    pub fn load_car(
-        &mut self,
-        list: PlaceAddress,
-        to: PlaceAddress,
-    ) -> &mut Self {
+    pub fn load_car(&mut self, list: PlaceAddress, to: PlaceAddress) -> &mut Self {
         self.instructions.push(Instruction::LoadCar { list, to });
         self
     }
 
-    pub fn load_cdr(
-        &mut self,
-        list: PlaceAddress,
-        to: PlaceAddress,
-    ) -> &mut Self {
+    pub fn load_cdr(&mut self, list: PlaceAddress, to: PlaceAddress) -> &mut Self {
         self.instructions.push(Instruction::LoadCdr { list, to });
         self
     }
 
-    pub fn load_type_tag(
-        &mut self,
-        of: PlaceAddress,
-        to: PlaceAddress,
-    ) -> &mut Self {
+    pub fn load_type_tag(&mut self, of: PlaceAddress, to: PlaceAddress) -> &mut Self {
         self.instructions.push(Instruction::LoadTypeTag { of, to });
         self
     }

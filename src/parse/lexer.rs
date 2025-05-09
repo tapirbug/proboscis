@@ -54,22 +54,29 @@ impl<'s> TokenStream<'s> for Lexer<'s> {
         Some(match (head, ahead1) {
             (' ' | '\n' | '\t' | '\r', _) => {
                 let len = rest
-                    .find(|(_, char)| {
-                        !matches!(char, ' ' | '\n' | '\t' | '\r')
-                    })
+                    .find(|(_, char)| !matches!(char, ' ' | '\n' | '\t' | '\r'))
                     .map(|(idx, _)| idx)
                     .unwrap_or_else(|| self.source.len() - self.position);
                 Ok(Token::new(self.take(len), TokenKind::Ws))
             }
-            ('(', _) => {
-                Ok(Token::new(self.take("(".len()), TokenKind::LeftParen))
+            ('(', _) => Ok(Token::new(self.take("(".len()), TokenKind::LeftParen)),
+            (')', _) => Ok(Token::new(self.take(")".len()), TokenKind::RightParen)),
+            ('\'', _) => Ok(Token::new(self.take("\'".len()), TokenKind::Quote)),
+            ('#', Some('\'')) => {
+                let after = rest
+                    .skip(1)
+                    .find(|&(_, c)| !is_identifier_start(c) && !is_identifier_continue(c));
+                let range = match after {
+                    Some((next_idx, _)) => self.take(next_idx),
+                    None => self.take_rest().unwrap(),
+                };
+                if range.len() <= 2 {
+                    return Some(Err(LexerError::EmptyFuncName {
+                        fragment: range.of(self.source),
+                    }));
+                }
+                Ok(Token::new(range, TokenKind::FuncIdent))
             }
-            (')', _) => {
-                Ok(Token::new(self.take(")".len()), TokenKind::RightParen))
-            }
-            ('\'', _) => {
-                Ok(Token::new(self.take("\'".len()), TokenKind::Quote))
-            },
             (';', _) => {
                 let len = rest
                     .find(|&(_, c)| c == '\n')
@@ -90,10 +97,7 @@ impl<'s> TokenStream<'s> for Lexer<'s> {
                             // end of string
                             let len = idx + "\"".len();
                             let fragment = self.take(len);
-                            return Some(Ok(Token::new(
-                                fragment,
-                                TokenKind::StringLit,
-                            )));
+                            return Some(Ok(Token::new(fragment, TokenKind::StringLit)));
                         }
                         _ => {
                             backslash_prefix = 0;
@@ -109,9 +113,7 @@ impl<'s> TokenStream<'s> for Lexer<'s> {
             (c0, c1)
                 if c0.is_ascii_digit()
                     || (matches!(c0, '-' | '+' | '.')
-                        && c1
-                            .map(|c| c.is_ascii_digit())
-                            .unwrap_or(false)) =>
+                        && c1.map(|c| c.is_ascii_digit()).unwrap_or(false)) =>
             {
                 let next = rest.find(|(_, c)| !c.is_ascii_digit());
                 match next {
@@ -120,9 +122,7 @@ impl<'s> TokenStream<'s> for Lexer<'s> {
                         let len = rest
                             .find(|(_, c)| !c.is_ascii_digit())
                             .map(|(idx, _)| idx)
-                            .unwrap_or_else(|| {
-                                self.source.len() - self.position
-                            });
+                            .unwrap_or_else(|| self.source.len() - self.position);
                         let fragment = self.take(len);
                         Ok(Token::new(fragment, TokenKind::FloatLit))
                     }
@@ -185,6 +185,8 @@ fn is_identifier_continue(c: char) -> bool {
 #[derive(Debug, Clone)]
 pub enum LexerError<'s> {
     UnterminatedStringLit { fragment: Fragment<'s> },
+    // can only occur at the very end
+    EmptyFuncName { fragment: Fragment<'s> },
     UnrecognizedChar { fragment: Fragment<'s> },
 }
 
@@ -195,12 +197,12 @@ impl<'s> fmt::Display for LexerError<'s> {
                 writeln!(f, "unrecognized character: {}", fragment)?;
                 writeln!(f, "{}", fragment.source_context())?;
             }
+            LexerError::EmptyFuncName { fragment } => {
+                writeln!(f, "misssing function name: {}", fragment)?;
+                writeln!(f, "{}", fragment.source_context())?;
+            }
             LexerError::UnterminatedStringLit { fragment } => {
-                writeln!(
-                    f,
-                    "unterminated string literal opened at: {}",
-                    fragment
-                )?;
+                writeln!(f, "unterminated string literal opened at: {}", fragment)?;
                 writeln!(f, "{}", fragment.source_context())?;
             }
         }
@@ -219,15 +221,10 @@ mod test {
         let source_set = SourceSet::new_debug("\0asdf");
         let source = source_set.one();
         let mut lexer = Lexer::new(source);
-        let is_unrecognized_char_for_nul =
-            match lexer.next().unwrap().unwrap_err() {
-                LexerError::UnrecognizedChar { fragment }
-                    if fragment.source() == "\0" =>
-                {
-                    true
-                }
-                _ => false,
-            };
+        let is_unrecognized_char_for_nul = match lexer.next().unwrap().unwrap_err() {
+            LexerError::UnrecognizedChar { fragment } if fragment.source() == "\0" => true,
+            _ => false,
+        };
         assert!(is_unrecognized_char_for_nul);
         assert!(lexer.next().is_none());
         assert!(lexer.next().is_none());
@@ -477,15 +474,10 @@ mod test {
         let source = source_set.one();
 
         let mut lexer = Lexer::new(source);
-        let is_unterminated_string_lit_error =
-            match lexer.next().unwrap().unwrap_err() {
-                LexerError::UnterminatedStringLit { fragment }
-                    if fragment.source() == "\"" =>
-                {
-                    true
-                }
-                _ => false,
-            };
+        let is_unterminated_string_lit_error = match lexer.next().unwrap().unwrap_err() {
+            LexerError::UnterminatedStringLit { fragment } if fragment.source() == "\"" => true,
+            _ => false,
+        };
 
         assert!(is_unterminated_string_lit_error);
     }
@@ -496,15 +488,14 @@ mod test {
         let source = source_set.one();
 
         let mut lexer = Lexer::new(source);
-        let is_unterminated_string_lit_error =
-            match lexer.next().unwrap().unwrap_err() {
-                LexerError::UnterminatedStringLit { fragment }
-                    if fragment.source().starts_with("\"") =>
-                {
-                    true
-                }
-                _ => false,
-            };
+        let is_unterminated_string_lit_error = match lexer.next().unwrap().unwrap_err() {
+            LexerError::UnterminatedStringLit { fragment }
+                if fragment.source().starts_with("\"") =>
+            {
+                true
+            }
+            _ => false,
+        };
 
         assert!(is_unterminated_string_lit_error);
         assert!(lexer.next().is_none());
@@ -732,6 +723,70 @@ mod test {
         let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::IntLit));
         assert_eq!(token.fragment(source).source(), "10");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::RightParen));
+        assert_eq!(token.fragment(source).source(), ")");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::RightParen));
+        assert_eq!(token.fragment(source).source(), ")");
+    }
+
+    #[test]
+    fn lex_apply() {
+        let source_set = SourceSet::new_debug("(apply #'concatenate '(strings \"A\" \"b\"))");
+        let source = source_set.one();
+
+        let mut lexer = Lexer::new(source);
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::LeftParen));
+        assert_eq!(token.fragment(source).source(), "(");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::Ident));
+        assert_eq!(token.fragment(source).source(), "apply");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::Ws));
+        assert_eq!(token.fragment(source).source(), " ");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.fragment(source).source(), "#'concatenate");
+        assert!(matches!(token.kind(), TokenKind::FuncIdent));
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::Ws));
+        assert_eq!(token.fragment(source).source(), " ");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::Quote));
+        assert_eq!(token.fragment(source).source(), "'");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::LeftParen));
+        assert_eq!(token.fragment(source).source(), "(");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::Ident));
+        assert_eq!(token.fragment(source).source(), "strings");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::Ws));
+        assert_eq!(token.fragment(source).source(), " ");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::StringLit));
+        assert_eq!(token.fragment(source).source(), "\"A\"");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::Ws));
+        assert_eq!(token.fragment(source).source(), " ");
+
+        let token = lexer.next().unwrap().unwrap();
+        assert!(matches!(token.kind(), TokenKind::StringLit));
+        assert_eq!(token.fragment(source).source(), "\"b\"");
 
         let token = lexer.next().unwrap().unwrap();
         assert!(matches!(token.kind(), TokenKind::RightParen));

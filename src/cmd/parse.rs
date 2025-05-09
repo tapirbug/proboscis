@@ -5,11 +5,7 @@ use std::{
 };
 
 use super::err::CommandResult;
-use crate::{
-    args::TopLevelArgs,
-    cmd::err::CommandError,
-    parse::Parser, source::SourceSet,
-};
+use crate::{args::TopLevelArgs, cmd::err::CommandError, parse::Parser, source::SourceSet};
 
 pub fn parse(args: &TopLevelArgs) -> CommandResult<()> {
     let mut source_set = SourceSet::new();

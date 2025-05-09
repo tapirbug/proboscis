@@ -18,30 +18,24 @@ impl FunctionsBuilder {
         }
     }
 
-    pub fn add_exported_function(
-        &mut self,
-        name: &str,
-    ) -> StaticFunctionAddress {
+    pub fn add_exported_function(&mut self, name: &str) -> StaticFunctionAddress {
         self.add_function(name)
     }
 
-    pub fn add_private_function(
-        &mut self,
-    ) -> StaticFunctionAddress {
+    pub fn add_private_function(&mut self) -> StaticFunctionAddress {
         self.add_function("")
     }
 
-    pub fn implement_function(&mut self, address: StaticFunctionAddress) -> &mut InstructionBuilder {
+    pub fn implement_function(
+        &mut self,
+        address: StaticFunctionAddress,
+    ) -> &mut InstructionBuilder {
         &mut self.function_builders[address.to_i32() as usize]
     }
 
-    fn add_function(
-        &mut self,
-        name: &str,
-    ) -> StaticFunctionAddress {
+    fn add_function(&mut self, name: &str) -> StaticFunctionAddress {
         let new_idx = self.function_builders.len();
-        let function_address =
-            StaticFunctionAddress::new_unsafe(new_idx as i32);
+        let function_address = StaticFunctionAddress::new_unsafe(new_idx as i32);
         self.exported_names.push(name.into());
         self.function_builders.push(InstructionBuilder::new());
         function_address

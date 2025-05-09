@@ -1,4 +1,11 @@
-use std::{fmt, fs::File, io::{self, Read}, ops::Range, path::{Path, PathBuf}, ptr};
+use std::{
+    fmt,
+    fs::File,
+    io::{self, Read},
+    ops::Range,
+    path::{Path, PathBuf},
+    ptr,
+};
 
 /// A set of source files that should be compiled as a unit.
 pub struct SourceSet {
@@ -6,12 +13,12 @@ pub struct SourceSet {
     /// There is no padding between source files, so they should be accessed
     /// via the source iterator to tell the files apart.
     combined_source: String,
-    entries: Vec<SourceInfoEntry>
+    entries: Vec<SourceInfoEntry>,
 }
 
 pub struct SourceSetIter<'set> {
     source: &'set SourceSet,
-    consumed_entries: usize
+    consumed_entries: usize,
 }
 
 /// Internal representation without lifetimes
@@ -19,14 +26,13 @@ struct SourceInfoEntry {
     /// File, if this source was loaded from a file
     file: Option<PathBuf>,
     /// The byte range in the combined source
-    range: Range<usize>
+    range: Range<usize>,
 }
-
 
 #[derive(Clone, Copy)]
 pub struct Source<'set> {
     set: &'set SourceSet,
-    idx: usize
+    idx: usize,
 }
 
 impl SourceSet {
@@ -34,7 +40,7 @@ impl SourceSet {
     pub fn new() -> Self {
         Self {
             combined_source: String::new(),
-            entries: Vec::new()
+            entries: Vec::new(),
         }
     }
 
@@ -63,32 +69,50 @@ impl SourceSet {
         let path = path.as_ref();
 
         self.check_duplicate_file(path)?;
-        let mut file = File::open(path).map_err(|io| SourceError::IO { path: path.into(), error: io })?;
+        let mut file = File::open(path).map_err(|io| SourceError::IO {
+            path: path.into(),
+            error: io,
+        })?;
 
-        let appended_bytes_after_padding = file.read_to_string(&mut self.combined_source).map_err(|io| SourceError::IO { path: path.into(), error: io })?;
+        let appended_bytes_after_padding =
+            file.read_to_string(&mut self.combined_source)
+                .map_err(|io| SourceError::IO {
+                    path: path.into(),
+                    error: io,
+                })?;
 
         self.entries.push(SourceInfoEntry {
             file: Some(path.into()),
-            range: (self.combined_source.len() - appended_bytes_after_padding)..self.combined_source.len()
+            range: (self.combined_source.len() - appended_bytes_after_padding)
+                ..self.combined_source.len(),
         });
 
-        Ok(Source { set: self, idx: self.entries.len() - 1 })
+        Ok(Source {
+            set: self,
+            idx: self.entries.len() - 1,
+        })
     }
 
     /// Loads a source that is not associated with a particular file.
-    /// 
+    ///
     /// No attempt is made to check for duplicates for sources added this way.
     pub fn load_without_path(&mut self, source: &str) -> Source {
         self.combined_source.push_str(source);
-        self.entries.push(SourceInfoEntry { file: None, range: (self.combined_source.len() - source.len())..self.combined_source.len() });
-        Source { set: self, idx: self.entries.len() - 1 }
+        self.entries.push(SourceInfoEntry {
+            file: None,
+            range: (self.combined_source.len() - source.len())..self.combined_source.len(),
+        });
+        Source {
+            set: self,
+            idx: self.entries.len() - 1,
+        }
     }
 
     fn check_duplicate_file(&self, path: &Path) -> Result<(), SourceError> {
         for entry in &self.entries {
             if let Some(ref loaded_path) = entry.file {
                 if path == loaded_path {
-                    return Err(SourceError::DuplicateSource(path.into()))
+                    return Err(SourceError::DuplicateSource(path.into()));
                 }
             }
         }
@@ -96,7 +120,10 @@ impl SourceSet {
     }
 
     pub fn iter(&self) -> SourceSetIter {
-        SourceSetIter { source: self, consumed_entries: 0 }
+        SourceSetIter {
+            source: self,
+            consumed_entries: 0,
+        }
     }
 
     #[cfg(test)]
@@ -115,13 +142,19 @@ impl<'set> Iterator for SourceSetIter<'set> {
             return None;
         }
         self.consumed_entries += 1;
-        return Some(Source { set: self.source, idx: this_idx })
+        return Some(Source {
+            set: self.source,
+            idx: this_idx,
+        });
     }
 }
 
 impl<'set> Source<'set> {
     pub fn path(self) -> Option<&'set Path> {
-        (&self.set.entries[self.idx]).file.as_ref().map(|f| f.as_ref())
+        (&self.set.entries[self.idx])
+            .file
+            .as_ref()
+            .map(|f| f.as_ref())
     }
 
     pub fn as_str(self) -> &'set str {
@@ -154,11 +187,8 @@ impl<'set> fmt::Debug for Source<'set> {
 
 #[derive(Debug)]
 pub enum SourceError {
-    IO {
-        path: PathBuf,
-        error: io::Error
-    },
-    DuplicateSource(PathBuf)
+    IO { path: PathBuf, error: io::Error },
+    DuplicateSource(PathBuf),
 }
 
 impl fmt::Display for SourceError {
@@ -166,9 +196,14 @@ impl fmt::Display for SourceError {
         match self {
             Self::DuplicateSource(source) => {
                 writeln!(f, "duplicate source file `{}`", source.display())
-            },
+            }
             Self::IO { path, error } => {
-                writeln!(f, "I/O error trying to read source file `{}`: {}", path.display(), error)
+                writeln!(
+                    f,
+                    "I/O error trying to read source file `{}`: {}",
+                    path.display(),
+                    error
+                )
             }
         }
     }

@@ -4,14 +4,14 @@ pub struct VariableScope<'s> {
     /// Bindings, duplicates are allowed. To the right is more local,
     /// and resolving will give the most local.
     bindings: Vec<(&'s str, PlaceAddress)>,
-    scope_ends: Vec<usize>
+    scope_ends: Vec<usize>,
 }
 
 impl<'s> VariableScope<'s> {
     pub fn new() -> Self {
         Self {
             bindings: vec![],
-            scope_ends: vec![]
+            scope_ends: vec![],
         }
     }
 
@@ -29,8 +29,12 @@ impl<'s> VariableScope<'s> {
     }
 
     pub fn resolve(&self, name: &'s str) -> Result<PlaceAddress, VariableNotInScope> {
-        self.bindings.iter().rev().find(|(binding_name, _)| *binding_name == name).map(|(_, addr)| *addr)
-        .ok_or_else(|| VariableNotInScope(name))
+        self.bindings
+            .iter()
+            .rev()
+            .find(|(binding_name, _)| *binding_name == name)
+            .map(|(_, addr)| *addr)
+            .ok_or_else(|| VariableNotInScope(name))
     }
 }
 

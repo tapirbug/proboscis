@@ -16,8 +16,7 @@ impl<'s, 't> GlobalDefinition<'s, 't> {
     pub fn extract(
         source: Source<'s>,
         node: &'t AstNode<'s>,
-    ) -> Result<Option<GlobalDefinition<'s, 't>>, GlobalDefinitionError<'s, 't>>
-    {
+    ) -> Result<Option<GlobalDefinition<'s, 't>>, GlobalDefinitionError<'s, 't>> {
         let list = match node.list() {
             None => return Ok(None), // ignore non-list root-level thingy
             Some(l) => l,
@@ -31,10 +30,7 @@ impl<'s, 't> GlobalDefinition<'s, 't> {
             Some(head) => head,
         };
         let is_definition = match head {
-            AstNode::Atom(first)
-                if first.source_range().of(source).source()
-                    == "defparameter" =>
-            {
+            AstNode::Atom(first) if first.source_range().of(source).source() == "defparameter" => {
                 true
             }
             _ => false,
@@ -44,15 +40,15 @@ impl<'s, 't> GlobalDefinition<'s, 't> {
             return Ok(None);
         }
 
-        let name_node = elements.next().ok_or_else(|| {
-            GlobalDefinitionError::MissingName { source, node }
-        })?;
-        let name = name_node.atom().ok_or_else(|| {
-            GlobalDefinitionError::MalformedName {
+        let name_node = elements
+            .next()
+            .ok_or_else(|| GlobalDefinitionError::MissingName { source, node })?;
+        let name = name_node
+            .atom()
+            .ok_or_else(|| GlobalDefinitionError::MalformedName {
                 source,
                 node: name_node,
-            }
-        })?;
+            })?;
         if !matches!(name.token().kind(), TokenKind::Ident) {
             return Err(GlobalDefinitionError::MalformedName {
                 source,
@@ -60,9 +56,9 @@ impl<'s, 't> GlobalDefinition<'s, 't> {
             });
         }
 
-        let value = elements.next().ok_or_else(|| {
-            GlobalDefinitionError::MissingValue { source, node }
-        })?;
+        let value = elements
+            .next()
+            .ok_or_else(|| GlobalDefinitionError::MissingValue { source, node })?;
 
         match elements.next() {
             None => {}
@@ -114,7 +110,7 @@ pub enum GlobalDefinitionError<'s, 't> {
         source: Source<'s>,
         node: &'t AstNode<'s>,
     },
-    Form(FormError<'s, 't>)
+    Form(FormError<'s, 't>),
 }
 
 impl<'s, 't> From<FormError<'s, 't>> for GlobalDefinitionError<'s, 't> {
@@ -144,8 +140,8 @@ impl<'s, 't> fmt::Display for GlobalDefinitionError<'s, 't> {
                     "found superfluous values in global definition after the initial value:"
                 )?;
                 writeln!(f, "{}", node.fragment(*source).source_context())
-            },
-            GlobalDefinitionError::Form(e) => write!(f, "{e}")
+            }
+            GlobalDefinitionError::Form(e) => write!(f, "{e}"),
         }
     }
 }
@@ -158,19 +154,28 @@ mod test {
 
     #[test]
     fn extract_global() {
-        let source_set = SourceSet::new_debug("(defparameter *list* '(1 2 3 4))
-(format t \"Max of ~a is ~a\" *list* (maximum *list*))");
+        let source_set = SourceSet::new_debug(
+            "(defparameter *list* '(1 2 3 4))
+(format t \"Max of ~a is ~a\" *list* (maximum *list*))",
+        );
         let source = source_set.one();
         let ast = Parser::new(source).parse().unwrap();
-        let definition =
-            GlobalDefinition::extract(source, &ast.root_nodes()[0]).unwrap().unwrap();
+        let definition = GlobalDefinition::extract(source, &ast.root_nodes()[0])
+            .unwrap()
+            .unwrap();
         let name = definition.name().source_range().of(source).source();
         assert_eq!(name, "*list*");
-        let value_code = definition.value().constant().unwrap().node().source_range().of(source).source();
+        let value_code = definition
+            .value()
+            .constant()
+            .unwrap()
+            .node()
+            .source_range()
+            .of(source)
+            .source();
         assert_eq!(value_code, "(1 2 3 4)");
 
-        let non_definition =
-            GlobalDefinition::extract(source, &ast.root_nodes()[1]).unwrap();
+        let non_definition = GlobalDefinition::extract(source, &ast.root_nodes()[1]).unwrap();
         assert!(non_definition.is_none());
     }
 }

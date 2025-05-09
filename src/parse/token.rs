@@ -46,4 +46,6 @@ pub enum TokenKind {
     /// A single quote, used for escaping the next thing, e.g. the quote
     /// in `'string`.
     Quote,
+    /// E.g. `#'+` or `#' +` (white-space allowed). Used for calling a function by name as a value, e.g. for map/reduce.
+    FuncIdent,
 }

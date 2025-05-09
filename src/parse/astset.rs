@@ -3,14 +3,12 @@ use std::{slice, vec};
 use super::ast::Ast;
 
 pub struct AstSet<'s> {
-    asts: Vec<Ast<'s>>
+    asts: Vec<Ast<'s>>,
 }
 
 impl<'s> AstSet<'s> {
     pub fn new(asts: Vec<Ast<'s>>) -> Self {
-        Self {
-            asts
-        }
+        Self { asts }
     }
 
     pub fn iter(&self) -> slice::Iter<Ast<'s>> {
@@ -20,7 +18,9 @@ impl<'s> AstSet<'s> {
 
 impl<'s> FromIterator<Ast<'s>> for AstSet<'s> {
     fn from_iter<T: IntoIterator<Item = Ast<'s>>>(iter: T) -> Self {
-        Self { asts: iter.into_iter().collect() }
+        Self {
+            asts: iter.into_iter().collect(),
+        }
     }
 }
 

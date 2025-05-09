@@ -21,8 +21,7 @@ impl<'s, I: TokenStream<'s>, const N: usize> Ignore<I, N> {
 impl<'s, I: TokenStream<'s>, const N: usize> TokenStream<'s> for Ignore<I, N> {
     fn next<'l>(
         &'l mut self,
-    ) -> Option<Result<super::token::Token<'s>, super::lexer::LexerError<'s>>>
-    {
+    ) -> Option<Result<super::token::Token<'s>, super::lexer::LexerError<'s>>> {
         let token = match self.inner.next()? {
             Err(e) => return Some(Err(e)),
             Ok(token) => token,
@@ -53,10 +52,7 @@ mod test {
     fn ignore_floats_and_whitespace() {
         let source_set = SourceSet::new_debug("4 14.4 3 12. 213 .11 ok cool");
         let source = source_set.one();
-        let mut ignore = Ignore::new(
-            Lexer::new(source),
-            [TokenKind::Ws, TokenKind::FloatLit],
-        );
+        let mut ignore = Ignore::new(Lexer::new(source), [TokenKind::Ws, TokenKind::FloatLit]);
 
         let next_token = ignore.next().unwrap().unwrap();
         let next_fragment = next_token.fragment(source);

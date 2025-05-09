@@ -63,11 +63,7 @@ impl StaticDataBuilder {
         address
     }
 
-    pub fn static_list_node(
-        &mut self,
-        car: DataAddress,
-        cdr: DataAddress,
-    ) -> DataAddress {
+    pub fn static_list_node(&mut self, car: DataAddress, cdr: DataAddress) -> DataAddress {
         let address = self.top_static_data_address();
         append_list_node(&mut self.static_data, car, cdr).unwrap();
         address

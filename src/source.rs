@@ -1,5 +1,5 @@
-mod sourceset;
 mod frag;
+mod sourceset;
 
-pub use sourceset::{SourceError, SourceSet, Source};
 pub use frag::{Fragment, SourceLocation, SourceRange};
+pub use sourceset::{Source, SourceError, SourceSet};

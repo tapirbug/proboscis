@@ -2,9 +2,22 @@ use std::{borrow::Cow, collections::HashMap, fmt, mem};
 
 use scope::VariableScope;
 
-use crate::{analysis::FunctionDefinition, ir::{DataAddress, FunctionsBuilder, PlaceAddress, Program, StaticDataBuilder, StaticFunctionAddress}, parse::{AstNode, Atom, List, TokenKind}, source::Source};
+use crate::{
+    analysis::FunctionDefinition,
+    ir::{
+        DataAddress, FunctionsBuilder, PlaceAddress, Program, StaticDataBuilder,
+        StaticFunctionAddress,
+    },
+    parse::{AstNode, Atom, List, TokenKind},
+    source::Source,
+};
 
-use super::{builtin::generate_builtin_functions, form::{self, AndForm, Call, Form, IfForm, LetForm, OrForm}, strings::decode_string, SemanticAnalysis};
+use super::{
+    SemanticAnalysis,
+    builtin::generate_builtin_functions,
+    form::{self, AndForm, ApplyStatic, Call, Form, IfForm, LetForm, OrForm},
+    strings::decode_string,
+};
 
 mod scope;
 
@@ -22,7 +35,7 @@ pub struct IrGen<'a, 's, 't> {
     global_identifier_addresses: HashMap<&'s str, DataAddress>,
     global_number_addresses: HashMap<i32, DataAddress>,
     variable_scope: VariableScope<'s>,
-    analysis: &'a SemanticAnalysis<'s, 't>
+    analysis: &'a SemanticAnalysis<'s, 't>,
 }
 
 impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
@@ -34,7 +47,8 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         // for now truth is just a string
         let t_address = static_data.static_identifier("T");
         let t_place = static_data.static_place(t_address);
-        let function_addresses: HashMap<String, StaticFunctionAddress> = HashMap::<String, StaticFunctionAddress>::new();
+        let function_addresses: HashMap<String, StaticFunctionAddress> =
+            HashMap::<String, StaticFunctionAddress>::new();
         let mut global_variables = VariableScope::new();
         global_variables.add_binding("nil", nil_place);
         global_variables.add_binding("t", t_place);
@@ -50,7 +64,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
             global_identifier_addresses: HashMap::new(),
             global_number_addresses: HashMap::new(),
             variable_scope: global_variables,
-            analysis
+            analysis,
         }
     }
 
@@ -59,33 +73,53 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         generator.generate_builtin_functions()?;
         generator.generate_source_global_variables()?;
         generator.generate_source_functions()?;
-        Ok(Program::new(generator.static_data.build(), generator.functions.build()))
+        Ok(Program::new(
+            generator.static_data.build(),
+            generator.functions.build(),
+        ))
     }
 
     /// Gets data addresses for static data, reusing existing data if possible.
-    pub fn static_data_for_node(&mut self, source: Source<'s>, value: &'t AstNode<'s>) -> Result<DataAddress, IrGenError<'s, 't>> {
+    pub fn static_data_for_node(
+        &mut self,
+        source: Source<'s>,
+        value: &'t AstNode<'s>,
+    ) -> Result<DataAddress, IrGenError<'s, 't>> {
         Ok(match value {
             AstNode::Atom(atom) => {
                 match atom.token().kind() {
-                    TokenKind::Comment | TokenKind::Ws | TokenKind::LeftParen | TokenKind::RightParen | TokenKind::Quote => unreachable!(),
+                    TokenKind::Comment
+                    | TokenKind::Ws
+                    | TokenKind::LeftParen
+                    | TokenKind::RightParen
+                    | TokenKind::Quote => unreachable!(),
                     TokenKind::StringLit => {
                         let decoded = decode_string(atom.fragment(source).source());
                         let decoded2 = decoded.clone();
-                        *self.global_string_addresses.entry(decoded)
+                        *self
+                            .global_string_addresses
+                            .entry(decoded)
                             .or_insert_with(|| self.static_data.static_string(decoded2.as_ref()))
-                    },
+                    }
                     TokenKind::IntLit => {
-                        let decoded = i32::from_str_radix(atom.fragment(source).source(), 10).map_err(|_| IrGenError::NumberParseError { atom, source: source })?;
+                        let decoded = i32::from_str_radix(atom.fragment(source).source(), 10)
+                            .map_err(|_| IrGenError::NumberParseError {
+                                atom,
+                                source: source,
+                            })?;
                         self.static_number(decoded)
-                    },
+                    }
                     TokenKind::FloatLit => todo!("floats are unimplemented"),
+                    TokenKind::FuncIdent => todo!("cannot name functions in static context yet"),
                     TokenKind::Ident => {
                         let value = atom.fragment(source).source();
-                        *self.global_identifier_addresses.entry(value)
+                        *self
+                            .global_identifier_addresses
+                            .entry(value)
                             .or_insert_with(|| self.static_data.static_identifier(value))
                     }
                 }
-            },
+            }
             AstNode::List(l) => {
                 let mut successor = self.nil_address;
                 for predecessor in l.elements().iter().rev() {
@@ -93,21 +127,27 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
                     successor = self.static_data.static_list_node(predecessor, successor);
                 }
                 successor
-            },
+            }
             AstNode::Quoted(q) => self.static_data_for_node(source, q.quoted())?,
         })
     }
 
     fn static_number(&mut self, decoded: i32) -> DataAddress {
-        *self.global_number_addresses.entry(decoded)
+        *self
+            .global_number_addresses
+            .entry(decoded)
             .or_insert_with(|| self.static_data.static_number(decoded))
     }
-    
+
     pub fn generate_source_global_variables(&mut self) -> Result<(), IrGenError<'s, 't>> {
         for global in self.analysis.global_definitions() {
             let name = global.name().fragment(global.source()).source();
-            let value = global.value().constant()
-                .ok_or_else(|| IrGenError::GlobalMustHaveConstantInitializer { source: global.source(), ident: global.name() })?;
+            let value = global.value().constant().ok_or_else(|| {
+                IrGenError::GlobalMustHaveConstantInitializer {
+                    source: global.source(),
+                    ident: global.name(),
+                }
+            })?;
             let data_address = self.static_data_for_node(global.source(), value.node())?;
             let data_place = self.static_data.static_place(data_address);
             self.variable_scope.add_binding(name, data_place);
@@ -116,11 +156,17 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
     }
 
     fn generate_builtin_functions(&mut self) -> Result<(), IrGenError<'s, 't>> {
-        generate_builtin_functions(&mut self.static_data, &mut self.functions, &mut self.function_addresses, self.nil_address, self.nil_place);
+        generate_builtin_functions(
+            &mut self.static_data,
+            &mut self.functions,
+            &mut self.function_addresses,
+            self.nil_address,
+            self.nil_place,
+        );
         Ok(())
     }
 
-    fn generate_source_functions(&mut self)  -> Result<(), IrGenError<'s, 't>> {
+    fn generate_source_functions(&mut self) -> Result<(), IrGenError<'s, 't>> {
         // first give them all an index
         for function in self.analysis.function_definitions() {
             let name = function.name().fragment(function.source()).source();
@@ -136,41 +182,60 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         Ok(())
     }
 
-    fn generate_function(&mut self, definition: &'t FunctionDefinition<'s, 't>) -> Result<(), IrGenError<'s, 't>> {
+    fn generate_function(
+        &mut self,
+        definition: &'t FunctionDefinition<'s, 't>,
+    ) -> Result<(), IrGenError<'s, 't>> {
         let mut next_local_place_address = 0;
         self.variable_scope.enter_scope();
-        let func_address = self.function_addresses[definition.name().fragment(definition.source()).source()];
+        let func_address =
+            self.function_addresses[definition.name().fragment(definition.source()).source()];
         self.functions.implement_function(func_address);
         for (arg_idx, arg) in definition.positional_args().iter().enumerate() {
             let ident = arg.fragment(definition.source()).source();
             let address = PlaceAddress::new_local(next_local_place_address);
             next_local_place_address += mem::size_of::<i32>() as i32;
-            self.functions.implement_function(func_address).consume_param(address);
+            self.functions
+                .implement_function(func_address)
+                .consume_param(address);
             self.variable_scope.add_binding(ident, address);
         }
         if let Some(rest_arg) = definition.rest_arg() {
             let rest_ident = rest_arg.fragment(definition.source()).source();
             let rest_address = PlaceAddress::new_local(next_local_place_address);
             next_local_place_address += mem::size_of::<i32>() as i32;
-            self.functions.implement_function(func_address).consume_rest(rest_address);
+            self.functions
+                .implement_function(func_address)
+                .consume_rest(rest_address);
             self.variable_scope.add_binding(rest_ident, rest_address);
         }
         let mut last_place = None;
         for code in definition.body() {
-            last_place = Some(self.generate_code(definition.source(), code, func_address, &mut next_local_place_address)?);
+            last_place = Some(self.generate_code(
+                definition.source(),
+                code,
+                func_address,
+                &mut next_local_place_address,
+            )?);
         }
-        self.functions.implement_function(func_address)
+        self.functions
+            .implement_function(func_address)
             .add_return(last_place.unwrap_or_else(|| self.nil_place));
         self.variable_scope.exit_scope();
         Ok(())
     }
 
     fn generate_root_code(&mut self) -> Result<(), IrGenError<'s, 't>> {
-        let conflicting_definition = self.analysis.function_definitions()
+        let conflicting_definition = self
+            .analysis
+            .function_definitions()
             .iter()
             .find(|d| d.name().fragment(d.source()).source() == "main");
         if let Some(conflicting_definition) = conflicting_definition {
-            return Err(IrGenError::ReservedName { ident: conflicting_definition.name(), source: conflicting_definition.source() });
+            return Err(IrGenError::ReservedName {
+                ident: conflicting_definition.name(),
+                source: conflicting_definition.source(),
+            });
         }
         let main_addr = self.functions.add_exported_function("main");
         //self.functions.implement_function(main_addr);
@@ -178,64 +243,125 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         let mut last_place = None;
         for code in self.analysis.root_code() {
             for each_code in code.code() {
-                last_place = Some(self.generate_code(code.source(), each_code, main_addr, &mut next_local_place_address)?);
+                last_place = Some(self.generate_code(
+                    code.source(),
+                    each_code,
+                    main_addr,
+                    &mut next_local_place_address,
+                )?);
             }
         }
-        self.functions.implement_function(main_addr)
+        self.functions
+            .implement_function(main_addr)
             .add_return(last_place.unwrap_or(self.nil_place));
         Ok(())
     }
 
-    fn generate_code(&mut self, source: Source<'s>, code: &Form<'s, 't>, addr: StaticFunctionAddress, next_local_place_address: &mut i32) -> Result<PlaceAddress, IrGenError<'s, 't>> {
+    fn generate_code(
+        &mut self,
+        source: Source<'s>,
+        code: &Form<'s, 't>,
+        addr: StaticFunctionAddress,
+        next_local_place_address: &mut i32,
+    ) -> Result<PlaceAddress, IrGenError<'s, 't>> {
         Ok(match code {
             // names refer directly to the place they are bound to, so they can be written
-            Form::Name(name) => self.variable_scope.resolve(name.as_str()).map_err(|_| IrGenError::NotInScope { source, atom: name.ident() })?,
+            Form::Name(name) => {
+                self.variable_scope
+                    .resolve(name.as_str())
+                    .map_err(|_| IrGenError::NotInScope {
+                        source,
+                        atom: name.ident(),
+                    })?
+            }
+            Form::FunctionName(_) => {
+                unimplemented!("function names outside of apply not yet supported")
+            }
             // numbers, strings and quoted stuff evaluate to a reference to static data stored in a local place
             Form::Constant(constant) => {
                 let data_address = self.static_data_for_node(source, constant.node())?;
                 let place_address = PlaceAddress::new_local(*next_local_place_address);
                 *next_local_place_address += mem::size_of::<i32>() as i32;
-                self.functions.implement_function(addr)
+                self.functions
+                    .implement_function(addr)
                     .load_data(data_address, place_address);
                 place_address
-            },
-            Form::IfForm(form) => self.generate_code_for_if_form(source, form, addr, next_local_place_address)?,
-            Form::AndForm(form) => self.generate_code_for_and_form(source, form, addr, next_local_place_address)?,
-            Form::OrForm(form) => self.generate_code_for_or_form(source, form, addr, next_local_place_address)?,
-            Form::LetForm(let_form) => self.generate_code_for_let_form(source, let_form, addr, next_local_place_address)?,
-            Form::Call(call) => self.generate_code_for_function_application(source, call, addr, next_local_place_address)?,
+            }
+            Form::IfForm(form) => {
+                self.generate_code_for_if_form(source, form, addr, next_local_place_address)?
+            }
+            Form::AndForm(form) => {
+                self.generate_code_for_and_form(source, form, addr, next_local_place_address)?
+            }
+            Form::OrForm(form) => {
+                self.generate_code_for_or_form(source, form, addr, next_local_place_address)?
+            }
+            Form::LetForm(let_form) => {
+                self.generate_code_for_let_form(source, let_form, addr, next_local_place_address)?
+            }
+            Form::Call(call) => self.generate_code_for_function_application(
+                source,
+                call,
+                addr,
+                next_local_place_address,
+            )?,
+            Form::ApplyStatic(form) => {
+                self.generate_code_for_apply_static(source, form, addr, next_local_place_address)?
+            }
         })
     }
 
-    fn generate_code_for_if_form(&mut self, source: Source<'s>, form: &IfForm<'s, 't>, addr: StaticFunctionAddress, next_local_place_address: &mut i32)-> Result<PlaceAddress, IrGenError<'s, 't>> {
+    fn generate_code_for_if_form(
+        &mut self,
+        source: Source<'s>,
+        form: &IfForm<'s, 't>,
+        addr: StaticFunctionAddress,
+        next_local_place_address: &mut i32,
+    ) -> Result<PlaceAddress, IrGenError<'s, 't>> {
         // generate something like: result = test(); a:{ b:{ if result != nil { break b; } … else code …  break a } … then code … }
 
         // evaluate the test
-        let test_result_place = self.generate_code(source, form.test_form(), addr, next_local_place_address)?;
+        let test_result_place =
+            self.generate_code(source, form.test_form(), addr, next_local_place_address)?;
         let result_place = PlaceAddress::new_local(*next_local_place_address);
         *next_local_place_address += mem::size_of::<i32>() as i32;
 
         // then do some checking and the else branch
-        self.functions.implement_function(addr)
+        self.functions
+            .implement_function(addr)
             .enter_block()
-                .enter_block()
-                    .break_if_not_nil(1, test_result_place);
+            .enter_block()
+            .break_if_not_nil(1, test_result_place);
         let else_result_place = match form.else_form() {
-            Some(else_form) => self.generate_code(source, else_form, addr, next_local_place_address)?,
-            None => self.nil_place
+            Some(else_form) => {
+                self.generate_code(source, else_form, addr, next_local_place_address)?
+            }
+            None => self.nil_place,
         };
-        self.functions.implement_function(addr).write_place(else_result_place, result_place)
-                    .add_break(2)
-                .exit_block();
-        
-        // and the then branch after the inner block
-        let then_result_place = self.generate_code(source, form.then_form(), addr, next_local_place_address)?;
+        self.functions
+            .implement_function(addr)
+            .write_place(else_result_place, result_place)
+            .add_break(2)
+            .exit_block();
 
-        self.functions.implement_function(addr).write_place(then_result_place, result_place).exit_block();
+        // and the then branch after the inner block
+        let then_result_place =
+            self.generate_code(source, form.then_form(), addr, next_local_place_address)?;
+
+        self.functions
+            .implement_function(addr)
+            .write_place(then_result_place, result_place)
+            .exit_block();
         Ok(result_place)
     }
 
-    fn generate_code_for_and_form(&mut self, source: Source<'s>, form: &AndForm<'s, 't>, addr: StaticFunctionAddress, next_local_place_address: &mut i32)-> Result<PlaceAddress, IrGenError<'s, 't>> {
+    fn generate_code_for_and_form(
+        &mut self,
+        source: Source<'s>,
+        form: &AndForm<'s, 't>,
+        addr: StaticFunctionAddress,
+        next_local_place_address: &mut i32,
+    ) -> Result<PlaceAddress, IrGenError<'s, 't>> {
         match form.forms().len() {
             0 => Ok(self.t_place),
             1 => self.generate_code(source, &form.forms()[0], addr, next_local_place_address),
@@ -243,14 +369,17 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
             _ => {
                 let result_place = PlaceAddress::new_local(*next_local_place_address);
                 *next_local_place_address += mem::size_of::<i32>() as i32;
-                
-                self.functions.implement_function(addr)
+
+                self.functions
+                    .implement_function(addr)
                     .load_data(self.t_address, result_place)
                     .enter_block();
 
                 for form in form.forms() {
-                    let form_result = self.generate_code(source, form, addr, next_local_place_address)?;
-                    self.functions.implement_function(addr)
+                    let form_result =
+                        self.generate_code(source, form, addr, next_local_place_address)?;
+                    self.functions
+                        .implement_function(addr)
                         .write_place(form_result, result_place)
                         .break_if_nil(1, result_place);
                 }
@@ -262,7 +391,13 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         }
     }
 
-    fn generate_code_for_or_form(&mut self, source: Source<'s>, form: &OrForm<'s, 't>, addr: StaticFunctionAddress, next_local_place_address: &mut i32)-> Result<PlaceAddress, IrGenError<'s, 't>> {
+    fn generate_code_for_or_form(
+        &mut self,
+        source: Source<'s>,
+        form: &OrForm<'s, 't>,
+        addr: StaticFunctionAddress,
+        next_local_place_address: &mut i32,
+    ) -> Result<PlaceAddress, IrGenError<'s, 't>> {
         match form.forms().len() {
             0 => Ok(self.nil_place),
             1 => self.generate_code(source, &form.forms()[0], addr, next_local_place_address),
@@ -270,14 +405,17 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
             _ => {
                 let result_place = PlaceAddress::new_local(*next_local_place_address);
                 *next_local_place_address += mem::size_of::<i32>() as i32;
-                
-                self.functions.implement_function(addr)
+
+                self.functions
+                    .implement_function(addr)
                     .load_data(self.nil_address, result_place)
                     .enter_block();
 
                 for form in form.forms() {
-                    let form_result = self.generate_code(source, form, addr, next_local_place_address)?;
-                    self.functions.implement_function(addr)
+                    let form_result =
+                        self.generate_code(source, form, addr, next_local_place_address)?;
+                    self.functions
+                        .implement_function(addr)
                         .write_place(form_result, result_place)
                         .break_if_not_nil(1, result_place);
                 }
@@ -289,10 +427,17 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         }
     }
 
-    fn generate_code_for_let_form(&mut self, source: Source<'s>, form: &LetForm<'s, 't>, addr: StaticFunctionAddress, next_local_place_address: &mut i32)-> Result<PlaceAddress, IrGenError<'s, 't>> {
+    fn generate_code_for_let_form(
+        &mut self,
+        source: Source<'s>,
+        form: &LetForm<'s, 't>,
+        addr: StaticFunctionAddress,
+        next_local_place_address: &mut i32,
+    ) -> Result<PlaceAddress, IrGenError<'s, 't>> {
         let mut places_to_add_simultaneously = Vec::with_capacity(form.bindings().len());
         for binding in form.bindings() {
-            let place = self.generate_code(source, binding.value(), addr, next_local_place_address)?;
+            let place =
+                self.generate_code(source, binding.value(), addr, next_local_place_address)?;
             places_to_add_simultaneously.push((binding.name().fragment(source).source(), place));
         }
         self.variable_scope.enter_scope();
@@ -309,7 +454,13 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         Ok(last_result)
     }
 
-    fn generate_code_for_function_application(&mut self, source: Source<'s>, call: &Call<'s, 't>, addr: StaticFunctionAddress, next_local_place_address: &mut i32) -> Result<PlaceAddress, IrGenError<'s, 't>> {
+    fn generate_code_for_function_application(
+        &mut self,
+        source: Source<'s>,
+        call: &Call<'s, 't>,
+        addr: StaticFunctionAddress,
+        next_local_place_address: &mut i32,
+    ) -> Result<PlaceAddress, IrGenError<'s, 't>> {
         let args = call.args();
         let mut evaluated_arg_places: Vec<PlaceAddress> = Vec::with_capacity(args.len());
         for arg in args {
@@ -330,11 +481,43 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         }
 
         let func_ident = call.function();
-        let func_address = self.function_addresses.get(func_ident.fragment(source).source())
+        let func_address = self
+            .function_addresses
+            .get(func_ident.fragment(source).source())
             .cloned()
-            .ok_or_else(|| IrGenError::FunctionNotFound { ident: func_ident, source })?;
+            .ok_or_else(|| IrGenError::FunctionNotFound {
+                ident: func_ident,
+                source,
+            })?;
         instructions.call(func_address, arguments_place, result_place);
-        
+
+        Ok(result_place)
+    }
+
+    fn generate_code_for_apply_static(
+        &mut self,
+        source: Source<'s>,
+        apply: &ApplyStatic<'s, 't>,
+        addr: StaticFunctionAddress,
+        next_local_place_address: &mut i32,
+    ) -> Result<PlaceAddress, IrGenError<'s, 't>> {
+        let arg_list = self.generate_code(source, apply.args(), addr, next_local_place_address)?;
+        let result_place = PlaceAddress::new_local(*next_local_place_address);
+        *next_local_place_address += mem::size_of::<i32>() as i32;
+        let func_name = apply.function_ident();
+        assert!(matches!(func_name.token().kind(), TokenKind::FuncIdent));
+        let func_name_str = func_name.fragment(source).source()[2..].trim();
+        let func_address = self
+            .function_addresses
+            .get(func_name_str)
+            .cloned()
+            .ok_or_else(|| IrGenError::FunctionNotFound {
+                ident: func_name,
+                source,
+            })?;
+        self.functions
+            .implement_function(addr)
+            .call(func_address, arg_list, result_place);
         Ok(result_place)
     }
 }
@@ -346,24 +529,24 @@ pub enum IrGenError<'s, 't> {
     },
     NotInScope {
         source: Source<'s>,
-        atom: &'t Atom<'s>
+        atom: &'t Atom<'s>,
     },
     ExpectedFunctionIdentifier {
         source: Source<'s>,
-        found_instead: &'t AstNode<'s>
+        found_instead: &'t AstNode<'s>,
     },
     FunctionNotFound {
         source: Source<'s>,
-        ident: &'t Atom<'s>
+        ident: &'t Atom<'s>,
     },
     ReservedName {
         source: Source<'s>,
-        ident: &'t Atom<'s>
+        ident: &'t Atom<'s>,
     },
     GlobalMustHaveConstantInitializer {
         source: Source<'s>,
-        ident: &'t Atom<'s>
-    }
+        ident: &'t Atom<'s>,
+    },
 }
 
 impl<'s, 't> fmt::Display for IrGenError<'s, 't> {
@@ -376,7 +559,7 @@ impl<'s, 't> fmt::Display for IrGenError<'s, 't> {
                     atom.source_range().of(source).source()
                 )?;
                 writeln!(f, "{}", atom.fragment(source).source_context())
-            },
+            }
             &IrGenError::NotInScope { atom, source } => {
                 writeln!(
                     f,
@@ -384,7 +567,7 @@ impl<'s, 't> fmt::Display for IrGenError<'s, 't> {
                     atom.source_range().of(source).source()
                 )?;
                 writeln!(f, "{}", atom.fragment(source).source_context())
-            },
+            }
             &IrGenError::FunctionNotFound { source, ident } => {
                 writeln!(
                     f,
@@ -392,17 +575,24 @@ impl<'s, 't> fmt::Display for IrGenError<'s, 't> {
                     ident.source_range().of(source).source()
                 )?;
                 writeln!(f, "{}", ident.fragment(source).source_context())
-            },
-            &IrGenError::ExpectedFunctionIdentifier { source, found_instead } => {
+            }
+            &IrGenError::ExpectedFunctionIdentifier {
+                source,
+                found_instead,
+            } => {
                 writeln!(f, "expected a function identifier here:")?;
                 writeln!(f, "{}", found_instead.fragment(source).source_context())
-            },
+            }
             &IrGenError::ReservedName { source, ident } => {
                 writeln!(f, "{} is a reserved name:", ident.fragment(source).source())?;
                 writeln!(f, "{}", ident.fragment(source).source_context())
-            },
+            }
             &IrGenError::GlobalMustHaveConstantInitializer { source, ident } => {
-                writeln!(f, "global {} does not have a constant initial value, which is unsupported:", ident.fragment(source).source())?;
+                writeln!(
+                    f,
+                    "global {} does not have a constant initial value, which is unsupported:",
+                    ident.fragment(source).source()
+                )?;
                 writeln!(f, "{}", ident.fragment(source).source_context())
             }
         }

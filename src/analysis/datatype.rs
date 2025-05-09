@@ -19,7 +19,7 @@ pub enum DataType {
     /// Local variables cannot hold this type, but they might refer to it.
     CharacterData,
     /// Otherwise same as character data, but for an escaped identifier.
-    Identifier
+    Identifier,
 }
 
 const HIGHEST_T_BIT: u8 = 0b1000;
@@ -32,7 +32,7 @@ const fn t_to_i(data_type: DataType) -> u8 {
         DataType::ListNode => 0b1,
         DataType::SInt32 => 0b10,
         DataType::CharacterData => 0b100,
-        DataType::Identifier => 0b1000
+        DataType::Identifier => 0b1000,
     }
 }
 

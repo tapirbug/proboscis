@@ -1,12 +1,11 @@
 use std::{fs::File, io::stdout};
 
 use crate::{
-    analysis::{
-        IrGen, NameCheck, SemanticAnalysis
-    },
+    analysis::{IrGen, NameCheck, SemanticAnalysis},
     args::{OutputFormat, TopLevelArgs},
     codegen::write_wat,
-    parse::{AstSet, Parser}, source::{Source, SourceSet},
+    parse::{AstSet, Parser},
+    source::{Source, SourceSet},
 };
 
 use super::err::CommandResult;
@@ -22,10 +21,13 @@ pub fn compile(args: &TopLevelArgs) -> CommandResult<()> {
     for file in args.files() {
         sources.load(file)?;
     }
-    let asts  = sources.iter().map(|s| {
-        let mut parser = Parser::new(s);
-        parser.parse()
-    }).collect::<Result<AstSet, _>>()?;
+    let asts = sources
+        .iter()
+        .map(|s| {
+            let mut parser = Parser::new(s);
+            parser.parse()
+        })
+        .collect::<Result<AstSet, _>>()?;
 
     let analysis = SemanticAnalysis::analyze(&asts)?;
     NameCheck::check(&analysis)?;

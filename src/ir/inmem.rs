@@ -1,12 +1,12 @@
 //! Creates in-memory representations of data
 
 use super::{data::DataAddress, datatype::IrDataType};
-use std::{io::{self, IoSlice, Write}, mem};
+use std::{
+    io::{self, IoSlice, Write},
+    mem,
+};
 
-pub fn append_nil<W: Write>(
-    buf: &mut W,
-    offset: i32,
-) -> io::Result<()> {
+pub fn append_nil<W: Write>(buf: &mut W, offset: i32) -> io::Result<()> {
     buf.write_vectored(&[
         IoSlice::new(&type_to_tag_bytes(IrDataType::Nil)),
         // hack: nil has a layout like a list node and both data and cdr point to itself
@@ -56,10 +56,7 @@ pub fn append_sint32<W: Write>(buf: &mut W, number: i32) -> io::Result<()> {
     Ok(())
 }
 
-pub fn append_place<W: Write>(
-    buf: &mut W,
-    data_address: DataAddress,
-) -> io::Result<()> {
+pub fn append_place<W: Write>(buf: &mut W, data_address: DataAddress) -> io::Result<()> {
     buf.write(&data_address.to_le_bytes())?;
     Ok(())
 }

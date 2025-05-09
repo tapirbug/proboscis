@@ -1,17 +1,20 @@
 use std::slice;
 
-use crate::source::{Fragment, SourceRange};
-use crate::source::Source;
 use super::token::Token;
+use crate::source::Source;
+use crate::source::{Fragment, SourceRange};
 
 #[derive(Debug)]
 pub struct Ast<'s> {
     source: Source<'s>,
-    root_nodes: Vec<AstNode<'s>>
+    root_nodes: Vec<AstNode<'s>>,
 }
 
 #[derive(Debug)]
 pub enum AstNode<'s> {
+    /// Numbers, names, function names etc.
+    ///
+    /// Atoms are a single token.
     Atom(Atom<'s>),
     /// A standard list, usually a function invocation, e.g. `(max 4)` or `()`.
     List(List<'s>),
@@ -34,6 +37,12 @@ pub struct List<'s> {
 pub struct Quoted<'s> {
     source_range: SourceRange<'s>,
     quoted: Box<AstNode<'s>>,
+}
+
+#[derive(Debug)]
+pub struct FunctionName<'s> {
+    source_range: SourceRange<'s>,
+    name: Token<'s>,
 }
 
 impl<'s> Ast<'s> {
@@ -77,7 +86,7 @@ impl<'s> AstNode<'s> {
         match self {
             &AstNode::Atom(Atom { ref token }) => token.source_range(),
             &AstNode::List(List { source_range, .. }) => source_range,
-            &AstNode::Quoted(Quoted { source_range, .. }) => source_range
+            &AstNode::Quoted(Quoted { source_range, .. }) => source_range,
         }
     }
 
@@ -125,10 +134,7 @@ impl<'s> Atom<'s> {
 }
 
 impl<'s> List<'s> {
-    pub fn new(
-        source_range: SourceRange<'s>,
-        elements: Vec<AstNode<'s>>,
-    ) -> AstNode<'s> {
+    pub fn new(source_range: SourceRange<'s>, elements: Vec<AstNode<'s>>) -> AstNode<'s> {
         AstNode::List(List {
             source_range,
             elements,
@@ -149,10 +155,7 @@ impl<'s> List<'s> {
 }
 
 impl<'s> Quoted<'s> {
-    pub fn new(
-        source_range: SourceRange<'s>,
-        quoted: AstNode<'s>,
-    ) -> AstNode<'s> {
+    pub fn new(source_range: SourceRange<'s>, quoted: AstNode<'s>) -> AstNode<'s> {
         AstNode::Quoted(Quoted {
             source_range,
             quoted: Box::new(quoted),
