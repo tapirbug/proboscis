@@ -8,15 +8,12 @@ use crate::{
         DataAddress, FunctionsBuilder, PlaceAddress, Program, StaticDataBuilder,
         StaticFunctionAddress,
     },
-    parse::{AstNode, Atom, List, TokenKind},
+    parse::{AstNode, Atom, TokenKind},
     source::Source,
 };
 
 use super::{
-    SemanticAnalysis,
-    builtin::generate_builtin_functions,
-    form::{self, AndForm, ApplyStatic, Call, Form, IfForm, LetForm, OrForm},
-    strings::decode_string,
+    builtin::generate_builtin_functions, form::{AndForm, Apply, Call, Form, IfForm, LetForm, OrForm}, strings::decode_string, SemanticAnalysis
 };
 
 mod scope;
@@ -34,6 +31,7 @@ pub struct IrGen<'a, 's, 't> {
     /// Identifiers for static data, e.g. 'string for concatenate
     global_identifier_addresses: HashMap<&'s str, DataAddress>,
     global_number_addresses: HashMap<i32, DataAddress>,
+    global_function_addresses: HashMap<&'s str, DataAddress>,
     variable_scope: VariableScope<'s>,
     analysis: &'a SemanticAnalysis<'s, 't>,
 }
@@ -63,6 +61,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
             global_string_addresses: HashMap::new(),
             global_identifier_addresses: HashMap::new(),
             global_number_addresses: HashMap::new(),
+            global_function_addresses: HashMap::new(),
             variable_scope: global_variables,
             analysis,
         }
@@ -110,7 +109,15 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
                         self.static_number(decoded)
                     }
                     TokenKind::FloatLit => todo!("floats are unimplemented"),
-                    TokenKind::FuncIdent => todo!("cannot name functions in static context yet"),
+                    // identifiers in an escaped context, here the #' will be included for functions
+                    TokenKind::FuncIdent => {
+                        let value = atom.fragment(source).source();
+                        *self
+                            .global_identifier_addresses
+                            .entry(value)
+                            .or_insert_with(|| self.static_data.static_identifier(value))
+                    },
+                    // variable identifiers are as-is in an escaped context
                     TokenKind::Ident => {
                         let value = atom.fragment(source).source();
                         *self
@@ -273,9 +280,22 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
                         source,
                         atom: name.ident(),
                     })?
-            }
-            Form::FunctionName(_) => {
-                unimplemented!("function names outside of apply not yet supported")
+            },
+            Form::FunctionName(name) => {
+                // functions don't really have a scope here, but should probably consider stuff like flet in the future
+                let value = name.as_str();
+                let static_address = *self.function_addresses.get(value)
+                    .ok_or_else(|| IrGenError::FunctionNotFound { source, ident: name.ident() })?;
+                let static_func_address = *self.global_function_addresses.entry(value)
+                    .or_insert_with(|| {
+                        self.static_data.static_function(static_address)
+                    });
+                let place_address = PlaceAddress::new_local(*next_local_place_address);
+                *next_local_place_address += mem::size_of::<i32>() as i32;
+                self.functions
+                    .implement_function(addr)
+                    .load_data(static_func_address, place_address);
+                place_address
             }
             // numbers, strings and quoted stuff evaluate to a reference to static data stored in a local place
             Form::Constant(constant) => {
@@ -305,8 +325,8 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
                 addr,
                 next_local_place_address,
             )?,
-            Form::ApplyStatic(form) => {
-                self.generate_code_for_apply_static(source, form, addr, next_local_place_address)?
+            Form::Apply(form) => {
+                self.generate_code_for_apply(source, form, addr, next_local_place_address)?
             }
         })
     }
@@ -494,30 +514,38 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         Ok(result_place)
     }
 
-    fn generate_code_for_apply_static(
+    fn generate_code_for_apply(
         &mut self,
         source: Source<'s>,
-        apply: &ApplyStatic<'s, 't>,
+        apply: &Apply<'s, 't>,
         addr: StaticFunctionAddress,
         next_local_place_address: &mut i32,
     ) -> Result<PlaceAddress, IrGenError<'s, 't>> {
         let arg_list = self.generate_code(source, apply.args(), addr, next_local_place_address)?;
         let result_place = PlaceAddress::new_local(*next_local_place_address);
         *next_local_place_address += mem::size_of::<i32>() as i32;
-        let func_name = apply.function_ident();
-        assert!(matches!(func_name.token().kind(), TokenKind::FuncIdent));
-        let func_name_str = func_name.fragment(source).source()[2..].trim();
-        let func_address = self
-            .function_addresses
-            .get(func_name_str)
-            .cloned()
-            .ok_or_else(|| IrGenError::FunctionNotFound {
-                ident: func_name,
-                source,
-            })?;
-        self.functions
-            .implement_function(addr)
-            .call(func_address, arg_list, result_place);
+        let function = apply.function();
+        if let Some(func_name) = function.function_name().map(|c| c.ident()) {
+            // when the target is a static function identify, we can do a fast direct call
+            assert!(matches!(func_name.token().kind(), TokenKind::FuncIdent));
+            let func_name_str = func_name.fragment(source).source()[2..].trim();
+            let func_address = self
+                .function_addresses
+                .get(func_name_str)
+                .cloned()
+                .ok_or_else(|| IrGenError::FunctionNotFound {
+                    ident: func_name,
+                    source,
+                })?;
+            self.functions
+                .implement_function(addr)
+                .call(func_address, arg_list, result_place);
+        } else {
+            // function calculated at runtime, need an indirect call
+            let function_place = self.generate_code(source, function, addr, next_local_place_address)?;
+            self.functions.implement_function(addr).call_indirect(function_place, arg_list, result_place);
+        }
+        
         Ok(result_place)
     }
 }

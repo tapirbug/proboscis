@@ -1,4 +1,4 @@
-use super::{data::DataAddress, func::StaticFunctionAddress, place::PlaceAddress};
+use super::{data::DataAddress, func::StaticFunctionAddress, place::PlaceAddress, FunctionTableIndex};
 use std::mem;
 
 #[derive(Debug, Clone, Copy)]
@@ -8,6 +8,11 @@ pub enum Instruction {
         params: PlaceAddress,
         /// Where to write the return value
         to: PlaceAddress, // could extend here to switch the stack or make it an extra instruction
+    },
+    CallIndirect {
+        function: PlaceAddress,
+        params: PlaceAddress,
+        to: PlaceAddress
     },
     /// Builtin to print a string, with no typechecking.
     CallPrint {
@@ -69,6 +74,23 @@ pub enum Instruction {
     WritePlace {
         from: PlaceAddress,
         to: PlaceAddress,
+    },
+    /// Create and enter a persistent environment for local places,
+    /// and write that environment to a place, from where it can be used to
+    /// create lambdas with read/write access to places of that scope.
+    /// 
+    /// This effectively switches to a new stack.
+    /// 
+    /// Exiting the closure happens on function exit.
+    CreateClosure {
+        to: PlaceAddress
+    },
+    /// Allocates a new function that closes over the specified closure.
+    CreateFunction {
+        function: FunctionTableIndex,
+        /// Can point to nil for #'+ and friends
+        closure: PlaceAddress,
+        to: PlaceAddress
     },
     /// Create a new list from car and cdr and write a reference to it to a
     /// place.
@@ -136,6 +158,20 @@ impl InstructionBuilder {
         to: PlaceAddress,
     ) -> &mut Self {
         self.instructions.push(Instruction::Call {
+            function,
+            params,
+            to,
+        });
+        self
+    }
+
+    pub fn call_indirect(
+        &mut self,
+        function: PlaceAddress,
+        params: PlaceAddress,
+        to: PlaceAddress,
+    ) -> &mut Self {
+        self.instructions.push(Instruction::CallIndirect {
             function,
             params,
             to,

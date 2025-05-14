@@ -3,8 +3,15 @@
 use super::{data::DataAddress, datatype::IrDataType};
 use std::{
     io::{self, IoSlice, Write},
-    mem,
 };
+
+pub fn append_function<W: Write>(buf: &mut W, table_idx: u32) -> io::Result<()> {
+    buf.write_all(&type_to_tag_bytes(IrDataType::Function))?;
+    buf.write_all(&table_idx.to_le_bytes())?;
+    // no stack switch for in-mem functions
+    buf.write_all(&0_u32.to_le_bytes())?;
+    Ok(())
+}
 
 pub fn append_nil<W: Write>(buf: &mut W, offset: i32) -> io::Result<()> {
     buf.write_vectored(&[
@@ -62,26 +69,5 @@ pub fn append_place<W: Write>(buf: &mut W, data_address: DataAddress) -> io::Res
 }
 
 pub fn type_to_tag_bytes(data_type: IrDataType) -> [u8; 4] {
-    type_to_tag(data_type).to_le_bytes()
-}
-
-pub fn type_to_tag(data_type: IrDataType) -> u32 {
-    match data_type {
-        IrDataType::Nil => 0,
-        IrDataType::ListNode => 1,
-        IrDataType::CharacterData => 2,
-        IrDataType::SInt32 => 3,
-        IrDataType::Identifier => 4,
-    }
-}
-
-fn tag_to_type(encoded: u32) -> IrDataType {
-    match encoded {
-        0 => IrDataType::Nil,
-        1 => IrDataType::ListNode,
-        2 => IrDataType::CharacterData,
-        3 => IrDataType::SInt32,
-        4 => IrDataType::Identifier,
-        _ => panic!(),
-    }
+    u32::from(data_type.to_tag()).to_le_bytes()
 }

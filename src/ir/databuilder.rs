@@ -3,21 +3,26 @@ use std::mem;
 use crate::ir::{data::DataAddress, inmem::append_string};
 
 use super::{
-    inmem::{append_identifier, append_list_node, append_nil, append_place, append_sint32},
-    place::PlaceAddress,
+    inmem::{append_function, append_identifier, append_list_node, append_nil, append_place, append_sint32}, place::PlaceAddress, FunctionTableIndex, StaticFunctionAddress
 };
 
 pub struct StaticData {
     static_data: Vec<u8>,
+    table_entries: Vec<StaticFunctionAddress>,
 }
 
 pub struct StaticDataBuilder {
     static_data: Vec<u8>,
+    table_entries: Vec<StaticFunctionAddress>,
 }
 
 impl StaticData {
     pub fn data(&self) -> &[u8] {
         &self.static_data
+    }
+
+    pub fn table_entries(&self) -> &[StaticFunctionAddress] {
+        &self.table_entries
     }
 }
 
@@ -25,6 +30,7 @@ impl StaticDataBuilder {
     pub fn new() -> Self {
         StaticDataBuilder {
             static_data: vec![],
+            table_entries: vec![]
         }
     }
 
@@ -34,6 +40,10 @@ impl StaticDataBuilder {
 
     fn top_static_place_address(&self) -> PlaceAddress {
         PlaceAddress::new_global(self.static_data.len().try_into().unwrap())
+    }
+
+    fn top_table_idx(&self) -> FunctionTableIndex {
+        FunctionTableIndex::new_unsafe(self.table_entries.len() as u32)
     }
 
     pub fn static_nil(&mut self) -> DataAddress {
@@ -75,11 +85,26 @@ impl StaticDataBuilder {
         address
     }
 
+    pub fn static_function(&mut self, static_addr: StaticFunctionAddress) -> DataAddress {
+        let address = self.top_static_data_address();
+        let idx = self.top_table_idx();
+        self.table_entries.push(static_addr);
+        append_function(&mut self.static_data, idx.to_u32()).unwrap();
+        address
+    }
+
+    pub fn function_table_entry(&mut self, static_addr: StaticFunctionAddress) -> FunctionTableIndex {
+        let idx = self.top_table_idx();
+        self.table_entries.push(static_addr);
+        idx
+    }
+
     /// Build the static data, consuming the contents of the builder and
     /// leaving it empty.
     pub fn build(&mut self) -> StaticData {
         StaticData {
             static_data: mem::take(&mut self.static_data),
+            table_entries: mem::take(&mut self.table_entries)
         }
     }
 }

@@ -43,6 +43,11 @@ pub fn local_places_byte_len(instructions: &[Instruction]) -> i32 {
                 locals.must_contain(params);
                 locals.must_contain(to);
             }
+            Instruction::CallIndirect { function, params, to } => {
+                locals.must_contain(function);
+                locals.must_contain(params);
+                locals.must_contain(to);
+            }
             Instruction::CallPrint { string } => {
                 locals.must_contain(string);
             }
@@ -60,7 +65,20 @@ pub fn local_places_byte_len(instructions: &[Instruction]) -> i32 {
             }
             Instruction::ContinueIfNotNil { if_not_nil, .. } => {
                 locals.must_contain(if_not_nil);
-            }
+            },
+            Instruction::CreateClosure {
+                to
+            } => {
+                locals.must_contain(to);
+            },
+            Instruction::CreateFunction {
+                closure,
+                to,
+                ..
+            } => {
+                locals.must_contain(closure);
+                locals.must_contain(to);
+            },
             Instruction::ExitBlock => {}
             Instruction::ConsumeParam { to } => {
                 locals.must_contain(to);

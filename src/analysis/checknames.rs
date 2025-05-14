@@ -139,8 +139,8 @@ impl<'t, 's> NameCheck<'t, 's> {
                 }
                 Ok(())
             }
-            Form::ApplyStatic(apply) => {
-                self.check_fn_ident(source, apply.function_ident())?;
+            Form::Apply(apply) => {
+                self.check_names(source, apply.function())?;
                 self.check_names(source, apply.args())
             }
         }

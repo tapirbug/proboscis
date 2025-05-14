@@ -1,7 +1,7 @@
 use std::fmt;
 
 use crate::{
-    parse::{AstNode, Atom, List, Token, TokenKind},
+    parse::{AstNode, Atom, List, TokenKind},
     source::Source,
 };
 
@@ -15,7 +15,7 @@ pub enum Form<'s, 't> {
     AndForm(AndForm<'s, 't>),
     OrForm(OrForm<'s, 't>),
     Call(Call<'s, 't>),
-    ApplyStatic(ApplyStatic<'s, 't>),
+    Apply(Apply<'s, 't>),
 }
 
 pub struct Name<'s, 't> {
@@ -67,10 +67,10 @@ pub struct LetForm<'s, 't> {
     body: Vec<Form<'s, 't>>,
 }
 
-pub struct ApplyStatic<'s, 't> {
+pub struct Apply<'s, 't> {
     source: Source<'s>,
-    /// Something static that can be resolved to a static address.
-    function_ident: &'t Atom<'s>,
+    /// Something that can be resolved to a function.
+    function: Box<Form<'s, 't>>,
     /// Arg list can be calculated at runtime.
     args: Box<Form<'s, 't>>,
 }
@@ -111,9 +111,9 @@ impl<'s, 't> Form<'s, 't> {
                 if let Some(let_form) = LetForm::extract_assume_nonempty(source, non_empty)? {
                     return Ok(Form::LetForm(let_form));
                 }
-                if let Some(apply_static) = ApplyStatic::extract_assume_nonempty(source, non_empty)?
+                if let Some(apply_static) = Apply::extract_assume_nonempty(source, non_empty)?
                 {
-                    return Ok(Form::ApplyStatic(apply_static));
+                    return Ok(Form::Apply(apply_static));
                 }
                 Form::Call(Call::extract_assume_nonempty(source, non_empty)?)
             }
@@ -124,6 +124,13 @@ impl<'s, 't> Form<'s, 't> {
         match self {
             Self::Name(name) => Some(name),
             _ => None,
+        }
+    }
+
+    pub fn function_name(&self) -> Option<&FunctionName<'s, 't>> {
+        match self {
+            Self::FunctionName(name) => Some(name),
+            _ => None
         }
     }
 
@@ -312,11 +319,11 @@ impl<'s, 't> OrForm<'s, 't> {
     }
 }
 
-impl<'s, 't> ApplyStatic<'s, 't> {
+impl<'s, 't> Apply<'s, 't> {
     fn extract_assume_nonempty(
         source: Source<'s>,
         form: &'t List<'s>,
-    ) -> Result<Option<ApplyStatic<'s, 't>>, FormError<'s, 't>> {
+    ) -> Result<Option<Apply<'s, 't>>, FormError<'s, 't>> {
         let mut elements = form.elements().iter();
 
         let head = elements.next().unwrap();
@@ -330,13 +337,9 @@ impl<'s, 't> ApplyStatic<'s, 't> {
         }
         let head = head.atom().unwrap();
 
-        let func = elements
+        let func = Form::extract(source, elements
             .next()
-            .ok_or_else(|| FormError::ApplyStaticTooShort { source, atom: head })?;
-        let func = func
-            .atom()
-            .filter(|a| matches!(a.token().kind(), TokenKind::FuncIdent))
-            .ok_or_else(|| FormError::ApplyStaticTargetNotStatic { source, atom: head })?;
+            .ok_or_else(|| FormError::ApplyStaticTooShort { source, atom: head })?)?;
         let args = elements
             .next()
             .ok_or_else(|| FormError::ApplyStaticTooShort { source, atom: head })?;
@@ -346,9 +349,9 @@ impl<'s, 't> ApplyStatic<'s, 't> {
             return Err(FormError::ApplyStaticTooLong { source, atom: head });
         }
 
-        Ok(Some(ApplyStatic {
+        Ok(Some(Apply {
             source,
-            function_ident: func,
+            function: Box::new(func),
             args: Box::new(args),
         }))
     }
@@ -357,8 +360,8 @@ impl<'s, 't> ApplyStatic<'s, 't> {
         self.source
     }
 
-    pub fn function_ident(&self) -> &'t Atom<'s> {
-        self.function_ident
+    pub fn function<'a>(&'a self) -> &'a Form<'s, 't> {
+        self.function.as_ref()
     }
 
     pub fn args<'a>(&'a self) -> &'a Form<'s, 't> {
@@ -560,10 +563,6 @@ pub enum FormError<'s, 't> {
         source: Source<'s>,
         atom: &'t Atom<'s>,
     },
-    ApplyStaticTargetNotStatic {
-        source: Source<'s>,
-        atom: &'t Atom<'s>,
-    },
 }
 
 impl<'s, 't> fmt::Display for FormError<'s, 't> {
@@ -622,10 +621,6 @@ impl<'s, 't> fmt::Display for FormError<'s, 't> {
             }
             FormError::ApplyStaticTooLong { source, atom } => {
                 writeln!(f, "apply has too many arguments")?;
-                writeln!(f, "{}", atom.fragment(*source).source_context())
-            }
-            FormError::ApplyStaticTargetNotStatic { source, atom } => {
-                writeln!(f, "target of apply must be constant (for now)")?;
                 writeln!(f, "{}", atom.fragment(*source).source_context())
             }
         }

@@ -8,13 +8,15 @@ mod inst;
 mod place;
 mod program;
 mod variant;
+mod functable;
 
 pub use data::DataAddress;
 pub use databuilder::{StaticData, StaticDataBuilder};
-pub use datatype::IrDataType;
+pub use datatype::{IrDataType, IrDataTypeTag};
 pub use func::{Function, StaticFunctionAddress};
 pub use funcbuilder::FunctionsBuilder;
-pub use inmem::{type_to_tag, type_to_tag_bytes};
+pub use inmem::{type_to_tag_bytes};
 pub use inst::{Instruction, InstructionBuilder};
 pub use place::{AddressingMode, PlaceAddress};
 pub use program::Program;
+pub use functable::FunctionTableIndex;
