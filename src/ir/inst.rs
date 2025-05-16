@@ -1,4 +1,7 @@
-use super::{data::DataAddress, func::StaticFunctionAddress, place::PlaceAddress, FunctionTableIndex};
+use super::{
+    FunctionTableIndex, data::DataAddress, func::StaticFunctionAddress,
+    place::PlaceAddress,
+};
 use std::mem;
 
 #[derive(Debug, Clone, Copy)]
@@ -12,7 +15,7 @@ pub enum Instruction {
     CallIndirect {
         function: PlaceAddress,
         params: PlaceAddress,
-        to: PlaceAddress
+        to: PlaceAddress,
     },
     /// Builtin to print a string, with no typechecking.
     CallPrint {
@@ -78,19 +81,19 @@ pub enum Instruction {
     /// Create and enter a persistent environment for local places,
     /// and write that environment to a place, from where it can be used to
     /// create lambdas with read/write access to places of that scope.
-    /// 
+    ///
     /// This effectively switches to a new stack.
-    /// 
+    ///
     /// Exiting the closure happens on function exit.
     CreateClosure {
-        to: PlaceAddress
+        to: PlaceAddress,
     },
     /// Allocates a new function that closes over the specified closure.
     CreateFunction {
         function: FunctionTableIndex,
         /// Can point to nil for #'+ and friends
         closure: PlaceAddress,
-        to: PlaceAddress
+        to: PlaceAddress,
     },
     /// Create a new list from car and cdr and write a reference to it to a
     /// place.
@@ -119,8 +122,56 @@ pub enum Instruction {
         right: PlaceAddress,
         to: PlaceAddress,
     },
-    /// Creates a new numebr from subtracting two numbers.
+    /// Creates a new number from subtracting two numbers.
     Sub {
+        left: PlaceAddress,
+        right: PlaceAddress,
+        to: PlaceAddress,
+    },
+    /// Creates a new number from multiplying two numbers.
+    Mul {
+        left: PlaceAddress,
+        right: PlaceAddress,
+        to: PlaceAddress,
+    },
+    /// Creates a new number from doing a truncating division of left by right.
+    Div {
+        left: PlaceAddress,
+        right: PlaceAddress,
+        to: PlaceAddress,
+    },
+    /// If left == right, write T to the target place, otherwise NIL.
+    Eq {
+        left: PlaceAddress,
+        right: PlaceAddress,
+        to: PlaceAddress,
+    },
+    /// If left != right, write T to the target place, otherwise NIL.
+    Ne {
+        left: PlaceAddress,
+        right: PlaceAddress,
+        to: PlaceAddress,
+    },
+    /// If left < right, write T to the target place, otherwise NIL.
+    Lt {
+        left: PlaceAddress,
+        right: PlaceAddress,
+        to: PlaceAddress,
+    },
+    /// If left > right, write T to the target place, otherwise NIL.
+    Gt {
+        left: PlaceAddress,
+        right: PlaceAddress,
+        to: PlaceAddress,
+    },
+    /// If left <= right, write T to the target place, otherwise NIL.
+    Lte {
+        left: PlaceAddress,
+        right: PlaceAddress,
+        to: PlaceAddress,
+    },
+    /// If left >= right, write T to the target place, otherwise NIL.
+    Gte {
         left: PlaceAddress,
         right: PlaceAddress,
         to: PlaceAddress,
@@ -205,7 +256,11 @@ impl InstructionBuilder {
         self
     }
 
-    pub fn continue_if_not_nil(&mut self, block_up: u32, if_not_nil: PlaceAddress) -> &mut Self {
+    pub fn continue_if_not_nil(
+        &mut self,
+        block_up: u32,
+        if_not_nil: PlaceAddress,
+    ) -> &mut Self {
         self.instructions.push(Instruction::ContinueIfNotNil {
             block_up,
             if_not_nil,
@@ -213,7 +268,11 @@ impl InstructionBuilder {
         self
     }
 
-    pub fn break_if_not_nil(&mut self, block_up: u32, if_not_nil: PlaceAddress) -> &mut Self {
+    pub fn break_if_not_nil(
+        &mut self,
+        block_up: u32,
+        if_not_nil: PlaceAddress,
+    ) -> &mut Self {
         self.instructions.push(Instruction::BreakIfNotNil {
             block_up,
             if_not_nil,
@@ -221,13 +280,21 @@ impl InstructionBuilder {
         self
     }
 
-    pub fn break_if_nil(&mut self, block_up: u32, if_nil: PlaceAddress) -> &mut Self {
+    pub fn break_if_nil(
+        &mut self,
+        block_up: u32,
+        if_nil: PlaceAddress,
+    ) -> &mut Self {
         self.instructions
             .push(Instruction::BreakIfNil { if_nil, block_up });
         self
     }
 
-    pub fn nil_if_zero(&mut self, check: PlaceAddress, to: PlaceAddress) -> &mut Self {
+    pub fn nil_if_zero(
+        &mut self,
+        check: PlaceAddress,
+        to: PlaceAddress,
+    ) -> &mut Self {
         self.instructions.push(Instruction::NilIfZero { check, to });
         self
     }
@@ -237,13 +304,103 @@ impl InstructionBuilder {
         self
     }
 
-    pub fn add(&mut self, left: PlaceAddress, right: PlaceAddress, to: PlaceAddress) -> &mut Self {
+    pub fn add(
+        &mut self,
+        left: PlaceAddress,
+        right: PlaceAddress,
+        to: PlaceAddress,
+    ) -> &mut Self {
         self.instructions.push(Instruction::Add { left, right, to });
         self
     }
 
-    pub fn sub(&mut self, left: PlaceAddress, right: PlaceAddress, to: PlaceAddress) -> &mut Self {
+    pub fn sub(
+        &mut self,
+        left: PlaceAddress,
+        right: PlaceAddress,
+        to: PlaceAddress,
+    ) -> &mut Self {
         self.instructions.push(Instruction::Sub { left, right, to });
+        self
+    }
+
+    pub fn mul(
+        &mut self,
+        left: PlaceAddress,
+        right: PlaceAddress,
+        to: PlaceAddress,
+    ) -> &mut Self {
+        self.instructions.push(Instruction::Mul { left, right, to });
+        self
+    }
+
+    pub fn div(
+        &mut self,
+        left: PlaceAddress,
+        right: PlaceAddress,
+        to: PlaceAddress,
+    ) -> &mut Self {
+        self.instructions.push(Instruction::Div { left, right, to });
+        self
+    }
+
+    pub fn eq(
+        &mut self,
+        left: PlaceAddress,
+        right: PlaceAddress,
+        to: PlaceAddress,
+    ) -> &mut Self {
+        self.instructions.push(Instruction::Eq { left, right, to });
+        self
+    }
+
+    pub fn ne(
+        &mut self,
+        left: PlaceAddress,
+        right: PlaceAddress,
+        to: PlaceAddress,
+    ) -> &mut Self {
+        self.instructions.push(Instruction::Ne { left, right, to });
+        self
+    }
+
+    pub fn lt(
+        &mut self,
+        left: PlaceAddress,
+        right: PlaceAddress,
+        to: PlaceAddress,
+    ) -> &mut Self {
+        self.instructions.push(Instruction::Lt { left, right, to });
+        self
+    }
+
+    pub fn gt(
+        &mut self,
+        left: PlaceAddress,
+        right: PlaceAddress,
+        to: PlaceAddress,
+    ) -> &mut Self {
+        self.instructions.push(Instruction::Gt { left, right, to });
+        self
+    }
+
+    pub fn lte(
+        &mut self,
+        left: PlaceAddress,
+        right: PlaceAddress,
+        to: PlaceAddress,
+    ) -> &mut Self {
+        self.instructions.push(Instruction::Lte { left, right, to });
+        self
+    }
+
+    pub fn gte(
+        &mut self,
+        left: PlaceAddress,
+        right: PlaceAddress,
+        to: PlaceAddress,
+    ) -> &mut Self {
+        self.instructions.push(Instruction::Gte { left, right, to });
         self
     }
 
@@ -263,36 +420,64 @@ impl InstructionBuilder {
         right: PlaceAddress,
         to: PlaceAddress,
     ) -> &mut Self {
-        self.instructions
-            .push(Instruction::ConcatStringLike { left, right, to });
+        self.instructions.push(Instruction::ConcatStringLike {
+            left,
+            right,
+            to,
+        });
         self
     }
 
-    pub fn load_data(&mut self, data: DataAddress, to: PlaceAddress) -> &mut Self {
+    pub fn load_data(
+        &mut self,
+        data: DataAddress,
+        to: PlaceAddress,
+    ) -> &mut Self {
         self.instructions.push(Instruction::LoadData { data, to });
         self
     }
 
-    pub fn write_place(&mut self, from: PlaceAddress, to: PlaceAddress) -> &mut Self {
+    pub fn write_place(
+        &mut self,
+        from: PlaceAddress,
+        to: PlaceAddress,
+    ) -> &mut Self {
         self.instructions.push(Instruction::WritePlace { from, to });
         self
     }
-    pub fn cons(&mut self, car: PlaceAddress, cdr: PlaceAddress, to: PlaceAddress) -> &mut Self {
+    pub fn cons(
+        &mut self,
+        car: PlaceAddress,
+        cdr: PlaceAddress,
+        to: PlaceAddress,
+    ) -> &mut Self {
         self.instructions.push(Instruction::Cons { car, cdr, to });
         self
     }
 
-    pub fn load_car(&mut self, list: PlaceAddress, to: PlaceAddress) -> &mut Self {
+    pub fn load_car(
+        &mut self,
+        list: PlaceAddress,
+        to: PlaceAddress,
+    ) -> &mut Self {
         self.instructions.push(Instruction::LoadCar { list, to });
         self
     }
 
-    pub fn load_cdr(&mut self, list: PlaceAddress, to: PlaceAddress) -> &mut Self {
+    pub fn load_cdr(
+        &mut self,
+        list: PlaceAddress,
+        to: PlaceAddress,
+    ) -> &mut Self {
         self.instructions.push(Instruction::LoadCdr { list, to });
         self
     }
 
-    pub fn load_type_tag(&mut self, of: PlaceAddress, to: PlaceAddress) -> &mut Self {
+    pub fn load_type_tag(
+        &mut self,
+        of: PlaceAddress,
+        to: PlaceAddress,
+    ) -> &mut Self {
         self.instructions.push(Instruction::LoadTypeTag { of, to });
         self
     }

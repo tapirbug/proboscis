@@ -134,7 +134,10 @@ impl<'s> Atom<'s> {
 }
 
 impl<'s> List<'s> {
-    pub fn new(source_range: SourceRange<'s>, elements: Vec<AstNode<'s>>) -> AstNode<'s> {
+    pub fn new(
+        source_range: SourceRange<'s>,
+        elements: Vec<AstNode<'s>>,
+    ) -> AstNode<'s> {
         AstNode::List(List {
             source_range,
             elements,
@@ -155,7 +158,10 @@ impl<'s> List<'s> {
 }
 
 impl<'s> Quoted<'s> {
-    pub fn new(source_range: SourceRange<'s>, quoted: AstNode<'s>) -> AstNode<'s> {
+    pub fn new(
+        source_range: SourceRange<'s>,
+        quoted: AstNode<'s>,
+    ) -> AstNode<'s> {
         AstNode::Quoted(Quoted {
             source_range,
             quoted: Box::new(quoted),

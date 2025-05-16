@@ -6,8 +6,8 @@ use crate::{
 };
 
 use super::{
-    FunctionDefinition, FunctionDefinitionError, GlobalDefinition, GlobalDefinitionError,
-    NameError,
+    FunctionDefinition, FunctionDefinitionError, GlobalDefinition,
+    GlobalDefinitionError, NameError,
     form::{Form, FormError},
 };
 
@@ -39,7 +39,8 @@ impl<'s, 't> SemanticAnalysis<'s, 't> {
             let mut root_code = vec![];
             for root_node in ast.iter() {
                 // try parsing root-level element as a function first
-                let def = FunctionDefinition::extract(ast.source(), root_node)?;
+                let def =
+                    FunctionDefinition::extract(ast.source(), root_node)?;
                 match def {
                     Some(def) => {
                         function_definitions.push(def);
@@ -60,8 +61,9 @@ impl<'s, 't> SemanticAnalysis<'s, 't> {
 
                 // all other cases are considered to be top-level code
                 root_code.push(
-                    Form::extract(ast.source(), root_node)
-                        .map_err(|e| SemanticAnalysisError::RootFormError(e))?,
+                    Form::extract(ast.source(), root_node).map_err(|e| {
+                        SemanticAnalysisError::RootFormError(e)
+                    })?,
                 );
             }
             root_codes.push(RootCode {
@@ -106,13 +108,17 @@ impl<'s, 't> From<NameError<'s, 't>> for SemanticAnalysisError<'s, 't> {
     }
 }
 
-impl<'s, 't> From<FunctionDefinitionError<'s, 't>> for SemanticAnalysisError<'s, 't> {
+impl<'s, 't> From<FunctionDefinitionError<'s, 't>>
+    for SemanticAnalysisError<'s, 't>
+{
     fn from(value: FunctionDefinitionError<'s, 't>) -> Self {
         Self::FunctionDefinition(value)
     }
 }
 
-impl<'s, 't> From<GlobalDefinitionError<'s, 't>> for SemanticAnalysisError<'s, 't> {
+impl<'s, 't> From<GlobalDefinitionError<'s, 't>>
+    for SemanticAnalysisError<'s, 't>
+{
     fn from(value: GlobalDefinitionError<'s, 't>) -> Self {
         Self::GlobalDefinition(value)
     }

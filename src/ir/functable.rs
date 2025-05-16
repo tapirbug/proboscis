@@ -1,7 +1,6 @@
-
 #[derive(Debug, Copy, Clone)]
 pub struct FunctionTableIndex {
-    idx: u32
+    idx: u32,
 }
 
 impl FunctionTableIndex {

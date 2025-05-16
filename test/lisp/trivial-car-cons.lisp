@@ -1,4 +1,4 @@
-(format t (concat-string-like-2 "tapir" (car '("stuff"))))
-(format t (concat-string-like-2 "tapir" (car (cons "stuff" nil))))
+(format t (concatenate 'string "tapir" (car '("stuff"))))
+(format t (concatenate 'string "tapir" (car (cons "stuff" nil))))
 
-(format t (concat-string-like-2 "tapir" "stuff2"))
+(format t (concatenate 'string "tapir" "stuff2"))

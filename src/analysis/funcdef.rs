@@ -25,7 +25,10 @@ impl<'s, 't> FunctionDefinition<'s, 't> {
     pub fn extract(
         source: Source<'s>,
         node: &'t AstNode<'s>,
-    ) -> Result<Option<FunctionDefinition<'s, 't>>, FunctionDefinitionError<'s, 't>> {
+    ) -> Result<
+        Option<FunctionDefinition<'s, 't>>,
+        FunctionDefinitionError<'s, 't>,
+    > {
         let list = match node.list() {
             None => return Ok(None), // ignore non-list root-level thingy
             Some(l) => l,
@@ -39,7 +42,11 @@ impl<'s, 't> FunctionDefinition<'s, 't> {
             Some(head) => head,
         };
         let is_definition = match head {
-            AstNode::Atom(first) if first.source_range().of(source).source() == "defun" => true,
+            AstNode::Atom(first)
+                if first.source_range().of(source).source() == "defun" =>
+            {
+                true
+            }
             _ => false,
         };
         if !is_definition {
@@ -47,15 +54,15 @@ impl<'s, 't> FunctionDefinition<'s, 't> {
             return Ok(None);
         }
 
-        let name_node = elements
-            .next()
-            .ok_or_else(|| FunctionDefinitionError::MissingName { source, node })?;
-        let name = name_node
-            .atom()
-            .ok_or_else(|| FunctionDefinitionError::MalformedName {
+        let name_node = elements.next().ok_or_else(|| {
+            FunctionDefinitionError::MissingName { source, node }
+        })?;
+        let name = name_node.atom().ok_or_else(|| {
+            FunctionDefinitionError::MalformedName {
                 source,
                 node: name_node,
-            })?;
+            }
+        })?;
         if !matches!(name.token().kind(), TokenKind::Ident) {
             return Err(FunctionDefinitionError::MalformedName {
                 source,
@@ -63,20 +70,24 @@ impl<'s, 't> FunctionDefinition<'s, 't> {
             });
         }
 
-        let param_node = elements
-            .next()
-            .ok_or_else(|| FunctionDefinitionError::MissingParams { source, node })?;
-        let param_list =
-            param_node
-                .list()
-                .ok_or_else(|| FunctionDefinitionError::MalformedParams {
-                    source,
-                    node: param_node,
-                })?;
-        let found_non_ident_param = param_list.elements().iter().any(|p| match p {
-            AstNode::Atom(a) if matches!(a.token().kind(), TokenKind::Ident) => false,
-            _ => true,
-        });
+        let param_node = elements.next().ok_or_else(|| {
+            FunctionDefinitionError::MissingParams { source, node }
+        })?;
+        let param_list = param_node.list().ok_or_else(|| {
+            FunctionDefinitionError::MalformedParams {
+                source,
+                node: param_node,
+            }
+        })?;
+        let found_non_ident_param =
+            param_list.elements().iter().any(|p| match p {
+                AstNode::Atom(a)
+                    if matches!(a.token().kind(), TokenKind::Ident) =>
+                {
+                    false
+                }
+                _ => true,
+            });
         if found_non_ident_param {
             return Err(FunctionDefinitionError::MalformedParams {
                 source,
@@ -126,7 +137,9 @@ impl<'s, 't> FunctionDefinition<'s, 't> {
 
         let doc_string_node = rest.get(0);
         let doc_string = match doc_string_node {
-            Some(AstNode::Atom(a)) if matches!(a.token().kind(), TokenKind::StringLit) => {
+            Some(AstNode::Atom(a))
+                if matches!(a.token().kind(), TokenKind::StringLit) =>
+            {
                 rest = &rest[1..];
                 Some(a)
             }
@@ -221,7 +234,10 @@ impl<'s, 't> fmt::Display for FunctionDefinitionError<'s, 't> {
                 writeln!(f, "{}", node.fragment(*source).source_context())
             }
             FunctionDefinitionError::MissingParams { source, node } => {
-                writeln!(f, "function definition is lacking the parameter list:")?;
+                writeln!(
+                    f,
+                    "function definition is lacking the parameter list:"
+                )?;
                 writeln!(f, "{}", node.fragment(*source).source_context())
             }
             FunctionDefinitionError::MalformedParams { source, node } => {
@@ -232,9 +248,19 @@ impl<'s, 't> fmt::Display for FunctionDefinitionError<'s, 't> {
                 writeln!(f, "&rest specified but no name given after it:")?;
                 writeln!(f, "{}", rest.fragment(*source).source_context())
             }
-            FunctionDefinitionError::RestAdditionalName { source, additional } => {
-                writeln!(f, "&rest specified with two or more names after it:")?;
-                writeln!(f, "{}", additional.fragment(*source).source_context())
+            FunctionDefinitionError::RestAdditionalName {
+                source,
+                additional,
+            } => {
+                writeln!(
+                    f,
+                    "&rest specified with two or more names after it:"
+                )?;
+                writeln!(
+                    f,
+                    "{}",
+                    additional.fragment(*source).source_context()
+                )
             }
             FunctionDefinitionError::FormError(e) => write!(f, "{}", e),
         }
@@ -264,14 +290,19 @@ mod test {
         let source = source_set.one();
         let ast = Parser::new(source).parse().unwrap();
 
-        let definition = FunctionDefinition::extract(source, &ast.root_nodes()[0])
-            .unwrap()
-            .unwrap();
-        assert_eq!(definition.name.source_range().of(source).source(), "max-2");
+        let definition =
+            FunctionDefinition::extract(source, &ast.root_nodes()[0])
+                .unwrap()
+                .unwrap();
+        assert_eq!(
+            definition.name.source_range().of(source).source(),
+            "max-2"
+        );
 
-        let definition = FunctionDefinition::extract(source, &ast.root_nodes()[1])
-            .unwrap()
-            .unwrap();
+        let definition =
+            FunctionDefinition::extract(source, &ast.root_nodes()[1])
+                .unwrap()
+                .unwrap();
         assert_eq!(
             definition.name.source_range().of(source).source(),
             "max-inner"

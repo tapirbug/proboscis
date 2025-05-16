@@ -35,15 +35,15 @@ pub fn local_places_byte_len(instructions: &[Instruction]) -> i32 {
     let mut locals = LocalSpaceCalculator::new();
     for &inst in instructions {
         match inst {
-            Instruction::Call {
+            Instruction::Call { params, to, .. } => {
+                locals.must_contain(params);
+                locals.must_contain(to);
+            }
+            Instruction::CallIndirect {
                 function,
                 params,
                 to,
             } => {
-                locals.must_contain(params);
-                locals.must_contain(to);
-            }
-            Instruction::CallIndirect { function, params, to } => {
                 locals.must_contain(function);
                 locals.must_contain(params);
                 locals.must_contain(to);
@@ -55,8 +55,8 @@ pub fn local_places_byte_len(instructions: &[Instruction]) -> i32 {
                 locals.must_contain(value);
             }
             Instruction::EnterBlock => {}
-            Instruction::Continue { block_up } => {}
-            Instruction::Break { block_up } => {}
+            Instruction::Continue { .. } => {}
+            Instruction::Break { .. } => {}
             Instruction::BreakIfNotNil { if_not_nil, .. } => {
                 locals.must_contain(if_not_nil);
             }
@@ -65,20 +65,14 @@ pub fn local_places_byte_len(instructions: &[Instruction]) -> i32 {
             }
             Instruction::ContinueIfNotNil { if_not_nil, .. } => {
                 locals.must_contain(if_not_nil);
-            },
-            Instruction::CreateClosure {
-                to
-            } => {
+            }
+            Instruction::CreateClosure { to } => {
                 locals.must_contain(to);
-            },
-            Instruction::CreateFunction {
-                closure,
-                to,
-                ..
-            } => {
+            }
+            Instruction::CreateFunction { closure, to, .. } => {
                 locals.must_contain(closure);
                 locals.must_contain(to);
-            },
+            }
             Instruction::ExitBlock => {}
             Instruction::ConsumeParam { to } => {
                 locals.must_contain(to);
@@ -86,7 +80,7 @@ pub fn local_places_byte_len(instructions: &[Instruction]) -> i32 {
             Instruction::ConsumeRest { to } => {
                 locals.must_contain(to);
             }
-            Instruction::LoadData { data, to } => {
+            Instruction::LoadData { to, .. } => {
                 locals.must_contain(to);
             }
             Instruction::WritePlace { from, to } => {
@@ -117,6 +111,46 @@ pub fn local_places_byte_len(instructions: &[Instruction]) -> i32 {
                 locals.must_contain(to);
             }
             Instruction::Sub { left, right, to } => {
+                locals.must_contain(left);
+                locals.must_contain(right);
+                locals.must_contain(to);
+            }
+            Instruction::Mul { left, right, to } => {
+                locals.must_contain(left);
+                locals.must_contain(right);
+                locals.must_contain(to);
+            }
+            Instruction::Div { left, right, to } => {
+                locals.must_contain(left);
+                locals.must_contain(right);
+                locals.must_contain(to);
+            }
+            Instruction::Eq { left, right, to } => {
+                locals.must_contain(left);
+                locals.must_contain(right);
+                locals.must_contain(to);
+            }
+            Instruction::Ne { left, right, to } => {
+                locals.must_contain(left);
+                locals.must_contain(right);
+                locals.must_contain(to);
+            }
+            Instruction::Gt { left, right, to } => {
+                locals.must_contain(left);
+                locals.must_contain(right);
+                locals.must_contain(to);
+            }
+            Instruction::Lt { left, right, to } => {
+                locals.must_contain(left);
+                locals.must_contain(right);
+                locals.must_contain(to);
+            }
+            Instruction::Gte { left, right, to } => {
+                locals.must_contain(left);
+                locals.must_contain(right);
+                locals.must_contain(to);
+            }
+            Instruction::Lte { left, right, to } => {
                 locals.must_contain(left);
                 locals.must_contain(right);
                 locals.must_contain(to);

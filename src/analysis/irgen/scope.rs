@@ -24,11 +24,15 @@ impl<'s> VariableScope<'s> {
     }
 
     pub fn exit_scope(&mut self) {
-        let scope_end = self.scope_ends.pop().expect("exited more than entered");
+        let scope_end =
+            self.scope_ends.pop().expect("exited more than entered");
         self.bindings.drain(scope_end..);
     }
 
-    pub fn resolve(&self, name: &'s str) -> Result<PlaceAddress, VariableNotInScope> {
+    pub fn resolve(
+        &self,
+        name: &'s str,
+    ) -> Result<PlaceAddress, VariableNotInScope> {
         self.bindings
             .iter()
             .rev()

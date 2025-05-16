@@ -85,33 +85,48 @@ impl<'s, 't> Form<'s, 't> {
                 source,
                 node: quoted.quoted(),
             }),
-            AstNode::Atom(atom) if matches!(atom.token().kind(), TokenKind::Ident) => {
+            AstNode::Atom(atom)
+                if matches!(atom.token().kind(), TokenKind::Ident) =>
+            {
                 Self::Name(Name {
                     source,
                     ident: atom,
                 })
             }
-            AstNode::Atom(atom) if matches!(atom.token().kind(), TokenKind::FuncIdent) => {
+            AstNode::Atom(atom)
+                if matches!(atom.token().kind(), TokenKind::FuncIdent) =>
+            {
                 Self::FunctionName(FunctionName { source, name: atom })
             }
-            AstNode::Atom(_) => Self::Constant(Constant { source, node: form }),
+            AstNode::Atom(_) => {
+                Self::Constant(Constant { source, node: form })
+            }
             AstNode::List(list) if list.elements().is_empty() => {
                 Self::Constant(Constant { source, node: form })
             }
             AstNode::List(non_empty) => {
-                if let Some(if_form) = IfForm::extract_assume_nonempty(source, non_empty)? {
+                if let Some(if_form) =
+                    IfForm::extract_assume_nonempty(source, non_empty)?
+                {
                     return Ok(Form::IfForm(if_form));
                 }
-                if let Some(and_form) = AndForm::extract_assume_nonempty(source, non_empty)? {
+                if let Some(and_form) =
+                    AndForm::extract_assume_nonempty(source, non_empty)?
+                {
                     return Ok(Form::AndForm(and_form));
                 }
-                if let Some(or_form) = OrForm::extract_assume_nonempty(source, non_empty)? {
+                if let Some(or_form) =
+                    OrForm::extract_assume_nonempty(source, non_empty)?
+                {
                     return Ok(Form::OrForm(or_form));
                 }
-                if let Some(let_form) = LetForm::extract_assume_nonempty(source, non_empty)? {
+                if let Some(let_form) =
+                    LetForm::extract_assume_nonempty(source, non_empty)?
+                {
                     return Ok(Form::LetForm(let_form));
                 }
-                if let Some(apply_static) = Apply::extract_assume_nonempty(source, non_empty)?
+                if let Some(apply_static) =
+                    Apply::extract_assume_nonempty(source, non_empty)?
                 {
                     return Ok(Form::Apply(apply_static));
                 }
@@ -130,7 +145,7 @@ impl<'s, 't> Form<'s, 't> {
     pub fn function_name(&self) -> Option<&FunctionName<'s, 't>> {
         match self {
             Self::FunctionName(name) => Some(name),
-            _ => None
+            _ => None,
         }
     }
 
@@ -197,7 +212,11 @@ impl<'s, 't> IfForm<'s, 't> {
 
         let head = elements.next().unwrap();
         let is_if = match head {
-            AstNode::Atom(first) if first.source_range().of(source).source() == "if" => true,
+            AstNode::Atom(first)
+                if first.source_range().of(source).source() == "if" =>
+            {
+                true
+            }
             _ => false,
         };
         if !is_if {
@@ -217,7 +236,9 @@ impl<'s, 't> IfForm<'s, 't> {
 
         let else_form = match elements.next() {
             None => None,
-            Some(else_form) => Some(Box::new(Form::extract(source, else_form)?)),
+            Some(else_form) => {
+                Some(Box::new(Form::extract(source, else_form)?))
+            }
         };
 
         match elements.next() {
@@ -264,7 +285,11 @@ impl<'s, 't> AndForm<'s, 't> {
 
         let head = elements.next().unwrap();
         let is_and = match head {
-            AstNode::Atom(first) if first.source_range().of(source).source() == "and" => true,
+            AstNode::Atom(first)
+                if first.source_range().of(source).source() == "and" =>
+            {
+                true
+            }
             _ => false,
         };
         if !is_and {
@@ -296,7 +321,11 @@ impl<'s, 't> OrForm<'s, 't> {
 
         let head = elements.next().unwrap();
         let is_or = match head {
-            AstNode::Atom(first) if first.source_range().of(source).source() == "or" => true,
+            AstNode::Atom(first)
+                if first.source_range().of(source).source() == "or" =>
+            {
+                true
+            }
             _ => false,
         };
         if !is_or {
@@ -328,7 +357,11 @@ impl<'s, 't> Apply<'s, 't> {
 
         let head = elements.next().unwrap();
         let is_apply = match head {
-            AstNode::Atom(first) if first.source_range().of(source).source() == "apply" => true,
+            AstNode::Atom(first)
+                if first.source_range().of(source).source() == "apply" =>
+            {
+                true
+            }
             _ => false,
         };
         if !is_apply {
@@ -337,12 +370,20 @@ impl<'s, 't> Apply<'s, 't> {
         }
         let head = head.atom().unwrap();
 
-        let func = Form::extract(source, elements
-            .next()
-            .ok_or_else(|| FormError::ApplyStaticTooShort { source, atom: head })?)?;
-        let args = elements
-            .next()
-            .ok_or_else(|| FormError::ApplyStaticTooShort { source, atom: head })?;
+        let func =
+            Form::extract(
+                source,
+                elements.next().ok_or_else(|| {
+                    FormError::ApplyStaticTooShort { source, atom: head }
+                })?,
+            )?;
+        let args =
+            elements
+                .next()
+                .ok_or_else(|| FormError::ApplyStaticTooShort {
+                    source,
+                    atom: head,
+                })?;
         let args = Form::extract(source, args)?;
 
         if elements.next().is_some() {
@@ -378,7 +419,11 @@ impl<'s, 't> LetForm<'s, 't> {
 
         let head = elements.next().unwrap();
         let is_let = match head {
-            AstNode::Atom(first) if first.source_range().of(source).source() == "let" => true,
+            AstNode::Atom(first)
+                if first.source_range().of(source).source() == "let" =>
+            {
+                true
+            }
             _ => false,
         };
         if !is_let {
@@ -387,23 +432,28 @@ impl<'s, 't> LetForm<'s, 't> {
         }
         let head = head.atom().unwrap();
 
-        let bindings = elements
-            .next()
-            .ok_or_else(|| FormError::LetMissingBindings { source, atom: head })?;
-        let bindings = bindings
-            .list()
-            .ok_or_else(|| FormError::LetBindingsNotList {
-                source,
-                atom: bindings,
-            })?;
+        let bindings =
+            elements
+                .next()
+                .ok_or_else(|| FormError::LetMissingBindings {
+                    source,
+                    atom: head,
+                })?;
+        let bindings =
+            bindings
+                .list()
+                .ok_or_else(|| FormError::LetBindingsNotList {
+                    source,
+                    atom: bindings,
+                })?;
         let mut bindings_parsed = vec![];
         for binding in bindings.elements() {
-            let binding = binding
-                .list()
-                .ok_or_else(|| FormError::LetBindingEntryNotList {
+            let binding = binding.list().ok_or_else(|| {
+                FormError::LetBindingEntryNotList {
                     source,
                     atom: binding,
-                })?;
+                }
+            })?;
             if binding.elements().len() < 2 {
                 return Err(FormError::LetBindingEntryTooShort {
                     source,
@@ -473,15 +523,12 @@ impl<'s, 't> Call<'s, 't> {
     ) -> Result<Call<'s, 't>, FormError<'s, 't>> {
         let mut elements = form.elements().iter();
 
-        let head =
-            elements
-                .next()
-                .unwrap()
-                .atom()
-                .ok_or_else(|| FormError::CallTargetNotConstant {
-                    source,
-                    form: &form.elements()[0],
-                })?;
+        let head = elements.next().unwrap().atom().ok_or_else(|| {
+            FormError::CallTargetNotConstant {
+                source,
+                form: &form.elements()[0],
+            }
+        })?;
 
         let arg_asts = &form.elements()[1..];
         let arg_forms = arg_asts

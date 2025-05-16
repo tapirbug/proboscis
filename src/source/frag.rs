@@ -203,7 +203,10 @@ impl<'s> SourceRange<'s> {
         }
     }
 
-    pub fn union_two(left: SourceRange<'s>, right: SourceRange<'s>) -> SourceRange<'s> {
+    pub fn union_two(
+        left: SourceRange<'s>,
+        right: SourceRange<'s>,
+    ) -> SourceRange<'s> {
         Self {
             from: left.from.min(right.from),
             to: left.to.max(right.to),
@@ -346,7 +349,8 @@ mod test {
         let set = SourceSet::new_debug("asdf");
         let source = set.iter().next().unwrap();
         let positions = once(Fragment::new(source, 0, 4));
-        let result = Fragment::union(positions).expect("expected union of one to have a result");
+        let result = Fragment::union(positions)
+            .expect("expected union of one to have a result");
         assert_eq!(result.source, source);
         assert_eq!(result.range.from, 0);
         assert_eq!(result.range.to, 4);
@@ -358,7 +362,8 @@ mod test {
         let source = set.iter().next().unwrap();
         let positions: [Fragment<'_>; 2] =
             [Fragment::new(source, 0, 1), Fragment::new(source, 1, 3)];
-        let result = Fragment::union(positions).expect("expected union of two to have a result");
+        let result = Fragment::union(positions)
+            .expect("expected union of two to have a result");
         assert_eq!(result.source, source);
         assert_eq!(result.range.from, 0);
         assert_eq!(result.range.to, 3);
@@ -373,7 +378,8 @@ mod test {
             Fragment::new(source, 1, 2),
             Fragment::new(source, 2, 3),
         ];
-        let result = Fragment::union(positions).expect("expected union of two to have a result");
+        let result = Fragment::union(positions)
+            .expect("expected union of two to have a result");
         assert_eq!(result.source, source);
         assert_eq!(result.range.from, 1);
         assert_eq!(result.range.to, 4);
@@ -490,7 +496,8 @@ mod test {
     fn format_position() {
         let set = SourceSet::new_debug("\nb = 3\n \nc=4");
         let source = set.iter().next().unwrap();
-        let literal_line_4 = &format!("{}", Fragment::new(source, 11, 12).from_position());
+        let literal_line_4 =
+            &format!("{}", Fragment::new(source, 11, 12).from_position());
         assert_eq!(literal_line_4, "4:3");
     }
 

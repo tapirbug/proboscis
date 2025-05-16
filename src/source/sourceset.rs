@@ -65,7 +65,10 @@ impl SourceSet {
     /// Loads a file into the source set. Will refuse to load files it has
     /// already loaded (but can easily be tricked by paths that would be
     /// the same canonically).
-    pub fn load<P: AsRef<Path>>(&mut self, path: P) -> Result<Source, SourceError> {
+    pub fn load<P: AsRef<Path>>(
+        &mut self,
+        path: P,
+    ) -> Result<Source, SourceError> {
         let path = path.as_ref();
 
         self.check_duplicate_file(path)?;
@@ -74,12 +77,12 @@ impl SourceSet {
             error: io,
         })?;
 
-        let appended_bytes_after_padding =
-            file.read_to_string(&mut self.combined_source)
-                .map_err(|io| SourceError::IO {
-                    path: path.into(),
-                    error: io,
-                })?;
+        let appended_bytes_after_padding = file
+            .read_to_string(&mut self.combined_source)
+            .map_err(|io| SourceError::IO {
+                path: path.into(),
+                error: io,
+            })?;
 
         self.entries.push(SourceInfoEntry {
             file: Some(path.into()),
@@ -100,7 +103,8 @@ impl SourceSet {
         self.combined_source.push_str(source);
         self.entries.push(SourceInfoEntry {
             file: None,
-            range: (self.combined_source.len() - source.len())..self.combined_source.len(),
+            range: (self.combined_source.len() - source.len())
+                ..self.combined_source.len(),
         });
         Source {
             set: self,

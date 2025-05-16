@@ -5,7 +5,10 @@ use crate::{
     source::Source,
 };
 
-use super::{FunctionDefinition, GlobalDefinition, form::Form, semantic::SemanticAnalysis};
+use super::{
+    FunctionDefinition, GlobalDefinition, form::Form,
+    semantic::SemanticAnalysis,
+};
 
 const GLOBAL_FUNCTIONS: &[&str] = &[
     "concat-string-like-2",
@@ -41,7 +44,9 @@ pub struct NameCheck<'t, 's> {
 }
 
 impl<'t, 's> NameCheck<'t, 's> {
-    pub fn check<'a: 't>(analysis: &'a SemanticAnalysis<'t, 's>) -> Result<(), NameError<'t, 's>> {
+    pub fn check<'a: 't>(
+        analysis: &'a SemanticAnalysis<'t, 's>,
+    ) -> Result<(), NameError<'t, 's>> {
         let mut check = Self {
             functions: analysis.function_definitions(),
             globals: analysis.global_definitions(),
@@ -90,8 +95,12 @@ impl<'t, 's> NameCheck<'t, 's> {
         code: &'t Form<'s, 't>,
     ) -> Result<(), NameError<'s, 't>> {
         match code {
-            Form::Name(name) => self.check_variable_ident(source, name.ident()),
-            Form::FunctionName(func_name) => self.check_fn_ident(source, func_name.ident()),
+            Form::Name(name) => {
+                self.check_variable_ident(source, name.ident())
+            }
+            Form::FunctionName(func_name) => {
+                self.check_fn_ident(source, func_name.ident())
+            }
             Form::Constant(_) => Ok(()), // constants don't have any names that need to be checked
             Form::IfForm(if_form) => {
                 self.check_names(source, if_form.test_form())?;
@@ -151,12 +160,13 @@ impl<'t, 's> NameCheck<'t, 's> {
         source: Source<'s>,
         ident_atom: &'t Atom<'s>,
     ) -> Result<(), NameError<'s, 't>> {
-        let ident_str = if matches!(ident_atom.token().kind(), TokenKind::FuncIdent) {
-            ident_atom.source_range().of(source).source()[2..].trim()
-        } else {
-            // normal identifiers verbatim
-            ident_atom.source_range().of(source).source()
-        };
+        let ident_str =
+            if matches!(ident_atom.token().kind(), TokenKind::FuncIdent) {
+                ident_atom.source_range().of(source).source()[2..].trim()
+            } else {
+                // normal identifiers verbatim
+                ident_atom.source_range().of(source).source()
+            };
         for defined_fn in self.functions {
             let defined_fn_ident = defined_fn
                 .name()

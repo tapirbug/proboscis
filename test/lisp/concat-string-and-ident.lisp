@@ -1,1 +1,1 @@
-(format t (concat-string-like-2 'Tapirus " terrestris"))
+(format t (concatenate 'string 'Tapirus " terrestris"))

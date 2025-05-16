@@ -60,7 +60,9 @@ impl<'s> Parser<'s> {
             | TokenKind::IntLit
             | TokenKind::StringLit
             | TokenKind::Ident
-            | TokenKind::FuncIdent => Ok(Atom::new(self.lexer.next().unwrap().unwrap())),
+            | TokenKind::FuncIdent => {
+                Ok(Atom::new(self.lexer.next().unwrap().unwrap()))
+            }
             TokenKind::Comment | TokenKind::Ws => unreachable!(),
             _ => Err(ParserError::mismatched_token(
                 source,
@@ -95,11 +97,16 @@ impl<'s> Parser<'s> {
         }
 
         let closing = closing
-            .ok_or_else(|| ParserError::unbalanced_parenthesis(source, opening.clone()))?
+            .ok_or_else(|| {
+                ParserError::unbalanced_parenthesis(source, opening.clone())
+            })?
             .unwrap();
 
         Ok(List::new(
-            SourceRange::union_two(opening.source_range(), closing.source_range()),
+            SourceRange::union_two(
+                opening.source_range(),
+                closing.source_range(),
+            ),
             items,
         ))
     }
@@ -154,7 +161,10 @@ impl<'s> ParserError<'s> {
         }
     }
 
-    pub fn unbalanced_parenthesis(source: Source<'s>, opening: Token<'s>) -> Self {
+    pub fn unbalanced_parenthesis(
+        source: Source<'s>,
+        opening: Token<'s>,
+    ) -> Self {
         Self {
             source,
             details: ParserErrorDetails::UnbalancedParenthesis { opening },
@@ -176,12 +186,28 @@ impl<'s> fmt::Display for ParserError<'s> {
                 write!(f, "{}", error)?;
             }
             ParserErrorDetails::MismatchedToken { ref token } => {
-                writeln!(f, "unexpected token: {}", token.fragment(self.source))?;
-                writeln!(f, "{}", token.fragment(self.source).source_context())?;
+                writeln!(
+                    f,
+                    "unexpected token: {}",
+                    token.fragment(self.source)
+                )?;
+                writeln!(
+                    f,
+                    "{}",
+                    token.fragment(self.source).source_context()
+                )?;
             }
             ParserErrorDetails::UnbalancedParenthesis { ref opening } => {
-                writeln!(f, "list never closed: {}", opening.fragment(self.source))?;
-                writeln!(f, "{}", opening.fragment(self.source).source_context())?;
+                writeln!(
+                    f,
+                    "list never closed: {}",
+                    opening.fragment(self.source)
+                )?;
+                writeln!(
+                    f,
+                    "{}",
+                    opening.fragment(self.source).source_context()
+                )?;
             }
             ParserErrorDetails::UnexpectedEnd => {
                 writeln!(f, "unexpected end")?;
@@ -254,7 +280,9 @@ mod test {
 
     #[test]
     fn parse_remove_if_not() {
-        let source_set = SourceSet::new_debug("(remove-if-not (lambda (x) (< x 5)) '(0 10))");
+        let source_set = SourceSet::new_debug(
+            "(remove-if-not (lambda (x) (< x 5)) '(0 10))",
+        );
         let source = source_set.one();
         let mut parser = Parser::new(source);
         let remove = parser.parse().unwrap().into_iter().next().unwrap();
@@ -330,7 +358,9 @@ mod test {
 
     #[test]
     fn parse_two_lists() {
-        let source_set = SourceSet::new_debug("(defparameter *x* 1)\n(defparameter *y* 2)\n");
+        let source_set = SourceSet::new_debug(
+            "(defparameter *x* 1)\n(defparameter *y* 2)\n",
+        );
         let source = source_set.one();
 
         let mut parser = Parser::new(source);

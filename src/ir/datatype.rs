@@ -25,9 +25,9 @@ pub enum IrDataType {
     /// 32-bit zero.
     Identifier,
     /// A function that can be called with apply or funcall.
-    /// 
+    ///
     /// The first entry is a table index for the function.
-    /// 
+    ///
     /// The second entry is a value for the second parameter that is used to
     /// pass an alternate stack offset for accessing closure parameters. It's
     /// zero (nil) if no closure parameters are to be used.
@@ -36,7 +36,7 @@ pub enum IrDataType {
 
 #[derive(Copy, Clone)]
 pub struct IrDataTypeTag {
-    value: u32
+    value: u32,
 }
 
 const TYPE_COUNT: u32 = 5;
@@ -53,8 +53,8 @@ impl IrDataType {
                 IrDataType::SInt32 => 0b100,
                 IrDataType::CharacterData => 0b1000,
                 IrDataType::Identifier => 0b1_0000,
-                IrDataType::Function => 0b10_0000
-            }
+                IrDataType::Function => 0b10_0000,
+            },
         }
     }
 
@@ -72,7 +72,7 @@ impl IrDataTypeTag {
             0b1000 => IrDataType::CharacterData,
             0b1_0000 => IrDataType::Identifier,
             0b10_0000 => IrDataType::Function,
-            _ => unreachable!() // valid tags don't end up here, and IrDataTypeTag contains a valid tag
+            _ => unreachable!(), // valid tags don't end up here, and IrDataTypeTag contains a valid tag
         }
     }
 
@@ -87,10 +87,10 @@ impl TryFrom<u32> for IrDataTypeTag {
     fn try_from(value: u32) -> Result<Self, Self::Error> {
         if (value >> (TYPE_COUNT + 1)) != 0 || value == 0 {
             // out of bounds or all zero is not allowed
-            return Err(())
+            return Err(());
         }
         Ok(IrDataTypeTag { value })
-    }    
+    }
 }
 
 impl From<IrDataType> for IrDataTypeTag {

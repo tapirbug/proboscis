@@ -1,11 +1,12 @@
 //! Creates in-memory representations of data
 
 use super::{data::DataAddress, datatype::IrDataType};
-use std::{
-    io::{self, IoSlice, Write},
-};
+use std::io::{self, IoSlice, Write};
 
-pub fn append_function<W: Write>(buf: &mut W, table_idx: u32) -> io::Result<()> {
+pub fn append_function<W: Write>(
+    buf: &mut W,
+    table_idx: u32,
+) -> io::Result<()> {
     buf.write_all(&type_to_tag_bytes(IrDataType::Function))?;
     buf.write_all(&table_idx.to_le_bytes())?;
     // no stack switch for in-mem functions
@@ -63,7 +64,10 @@ pub fn append_sint32<W: Write>(buf: &mut W, number: i32) -> io::Result<()> {
     Ok(())
 }
 
-pub fn append_place<W: Write>(buf: &mut W, data_address: DataAddress) -> io::Result<()> {
+pub fn append_place<W: Write>(
+    buf: &mut W,
+    data_address: DataAddress,
+) -> io::Result<()> {
     buf.write(&data_address.to_le_bytes())?;
     Ok(())
 }

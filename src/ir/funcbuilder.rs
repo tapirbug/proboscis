@@ -18,7 +18,10 @@ impl FunctionsBuilder {
         }
     }
 
-    pub fn add_exported_function(&mut self, name: &str) -> StaticFunctionAddress {
+    pub fn add_exported_function(
+        &mut self,
+        name: &str,
+    ) -> StaticFunctionAddress {
         self.add_function(name)
     }
 
@@ -35,7 +38,8 @@ impl FunctionsBuilder {
 
     fn add_function(&mut self, name: &str) -> StaticFunctionAddress {
         let new_idx = self.function_builders.len();
-        let function_address = StaticFunctionAddress::new_unsafe(new_idx as i32);
+        let function_address =
+            StaticFunctionAddress::new_unsafe(new_idx as i32);
         self.exported_names.push(name.into());
         self.function_builders.push(InstructionBuilder::new());
         function_address
