@@ -75,6 +75,7 @@ impl<'i> BuiltinGen<'i> {
         self.generate_gte2();
         self.generate_lte2();
         self.generate_nil_if_0();
+        self.generate_panic();
     }
 
     /// Function that prints a single argument that is a string or identifier (no typechecking)
@@ -309,5 +310,12 @@ impl<'i> BuiltinGen<'i> {
             .consume_param(place)
             .nil_if_zero(place, place)
             .add_return(place);
+    }
+
+    fn generate_panic(&mut self) {
+        let name = "intrinsic:panic";
+        let addr = self.functions.add_private_function(name);
+        self.function_addresses.insert(name.to_string(), addr);
+        self.functions.implement_function(addr).panic().add_return(self.nil_place);
     }
 }

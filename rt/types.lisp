@@ -23,3 +23,21 @@
 
 (defun functionp (thingy)
     (= (intrinsic:type-tag-of thingy) *tag-function*))
+
+(defun assert-list (thingy)
+    (if (listp thingy) thingy (panic "type error: expected list")))
+
+(defun assert-cons (thingy)
+    (if (consp thingy) thingy (panic "type error: expected cons")))
+
+(defun assert-number (thingy)
+    (if (numberp thingy) thingy (panic "type error: expected number")))
+
+(defun assert-string (thingy)
+    (if (stringp thingy) thingy (panic "type error: expected string")))
+
+(defun assert-symbol (thingy)
+    (if (symbolp thingy) thingy (panic "type error: expected symbol")))
+
+(defun assert-function (thingy)
+    (if (functionp thingy) thingy (panic "type error: expected function")))

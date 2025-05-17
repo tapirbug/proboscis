@@ -40,8 +40,8 @@ impl<'s> VariableScope<'s> {
             .rev()
             .find(|(binding_name, _)| *binding_name == name)
             .map(|(_, addr)| *addr)
-            .ok_or_else(|| VariableNotInScope(name))
+            .ok_or_else(|| VariableNotInScope)
     }
 }
 
-pub struct VariableNotInScope<'s>(&'s str);
+pub struct VariableNotInScope;

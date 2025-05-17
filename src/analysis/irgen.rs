@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap, fmt, mem};
+use std::{borrow::Cow, collections::HashMap, fmt};
 
 use address::LocalPlaceGenerator;
 use lambdas::{contains_form_lambdas, contains_function_lambdas};
@@ -731,10 +731,6 @@ pub enum IrGenError<'s, 't> {
         source: Source<'s>,
         atom: &'t Atom<'s>,
     },
-    ExpectedFunctionIdentifier {
-        source: Source<'s>,
-        found_instead: &'t AstNode<'s>,
-    },
     FunctionNotFound {
         source: Source<'s>,
         ident: &'t Atom<'s>,
@@ -775,17 +771,6 @@ impl<'s, 't> fmt::Display for IrGenError<'s, 't> {
                     ident.source_range().of(source).source()
                 )?;
                 writeln!(f, "{}", ident.fragment(source).source_context())
-            }
-            &IrGenError::ExpectedFunctionIdentifier {
-                source,
-                found_instead,
-            } => {
-                writeln!(f, "expected a function identifier here:")?;
-                writeln!(
-                    f,
-                    "{}",
-                    found_instead.fragment(source).source_context()
-                )
             }
             &IrGenError::ReservedName { source, ident } => {
                 writeln!(

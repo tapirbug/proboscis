@@ -23,7 +23,7 @@
 
 ;; one-argument version not supported
 (defun floor (top bottom)
-    (intrinsic:div-2 top bottom))
+    (intrinsic:div-2 (assert-number top) (assert-number bottom)))
 
 (defun = (first &rest rest)
     (if (null rest)

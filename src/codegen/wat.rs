@@ -604,7 +604,10 @@ fn write_function<W: Write>(
                 // and select nil address or the original number address based on the value being zero or not
                 write!(w, "\t\t\tselect\n")?;
                 write!(w, "\t\t\ti32.store\n")?;
-            } //inst => unimplemented!("instruction unimplemented: {:?}", inst)
+            }
+            Instruction::Panic => {
+                write!(w, "\t\t\tunreachable\n")?;
+            }
         }
     }
 

@@ -180,6 +180,9 @@ pub enum Instruction {
         of: PlaceAddress,
         to: PlaceAddress,
     },
+    /// Something that should never happen has happened and code shouldn't
+    /// continue executing.
+    Panic
 }
 
 pub struct InstructionBuilder {
@@ -480,6 +483,11 @@ impl InstructionBuilder {
         to: PlaceAddress,
     ) -> &mut Self {
         self.instructions.push(Instruction::LoadTypeTag { of, to });
+        self
+    }
+
+    pub fn panic(&mut self) -> &mut Self {
+        self.instructions.push(Instruction::Panic);
         self
     }
 

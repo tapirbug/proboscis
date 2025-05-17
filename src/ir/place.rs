@@ -15,10 +15,6 @@ pub enum AddressingMode {
 }
 
 impl PlaceAddress {
-    pub fn new(mode: AddressingMode, offset: i32) -> Self {
-        Self { mode, offset }
-    }
-
     pub fn new_global(absolute_address: i32) -> Self {
         Self {
             mode: AddressingMode::Global,

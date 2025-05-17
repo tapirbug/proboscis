@@ -1,3 +1,12 @@
+;; non-standard utilities to help with debugging programs (and the compiler itself)
+
+(defun assert (that-not-nil or-else-panic-msg)
+    (if that-not-nil nil (panic or-else-panic-msg)))
+
+(defun panic (message)
+    (intrinsic:princ message)
+    (intrinsic:panic))
+
 (defun to-string-list-items (thingy)
     (if (cdr thingy)
         (concatenate 'string (to-string-any (car thingy)) " " (to-string-list-items (cdr thingy)))
