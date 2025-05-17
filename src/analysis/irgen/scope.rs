@@ -20,6 +20,8 @@ impl<'s> VariableScope<'s> {
     }
 
     pub fn add_binding(&mut self, name: &'s str, address: PlaceAddress) {
+        // test:
+        //eprintln!("[{}] {} = {:?}", (self.scope_ends.len()), name, address);
         self.bindings.push((name, address));
     }
 

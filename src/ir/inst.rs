@@ -78,21 +78,12 @@ pub enum Instruction {
         from: PlaceAddress,
         to: PlaceAddress,
     },
-    /// Create and enter a persistent environment for local places,
-    /// and write that environment to a place, from where it can be used to
-    /// create lambdas with read/write access to places of that scope.
+    /// Allocates a new function that calls the given function and does not
+    /// use any persistent storage.
     ///
-    /// This effectively switches to a new stack.
-    ///
-    /// Exiting the closure happens on function exit.
-    CreateClosure {
-        to: PlaceAddress,
-    },
-    /// Allocates a new function that closes over the specified closure.
+    /// A reference to the function is saved in to.
     CreateFunction {
         function: FunctionTableIndex,
-        /// Can point to nil for #'+ and friends
-        closure: PlaceAddress,
         to: PlaceAddress,
     },
     /// Create a new list from car and cdr and write a reference to it to a
@@ -227,6 +218,16 @@ impl InstructionBuilder {
             params,
             to,
         });
+        self
+    }
+
+    pub fn create_function(
+        &mut self,
+        function: FunctionTableIndex,
+        to: PlaceAddress,
+    ) -> &mut Self {
+        self.instructions
+            .push(Instruction::CreateFunction { function, to });
         self
     }
 

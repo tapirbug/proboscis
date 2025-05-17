@@ -1,4 +1,7 @@
-use super::{data::DataAddress, databuilder::StaticData, func::Function};
+use super::{
+    FunctionTableIndex, StaticFunctionAddress, databuilder::StaticData,
+    func::Function,
+};
 
 pub struct Program {
     static_data: StaticData,
@@ -19,5 +22,17 @@ impl Program {
 
     pub fn functions(&self) -> &[Function] {
         &self.functions
+    }
+
+    pub fn resolve_function_addr(
+        &self,
+        addr: StaticFunctionAddress,
+    ) -> &Function {
+        &self.functions[addr.to_i32() as usize]
+    }
+
+    pub fn resolve_function_idx(&self, idx: FunctionTableIndex) -> &Function {
+        &self.functions[self.static_data.table_entries()[idx.to_u32() as usize]
+            .to_i32() as usize]
     }
 }

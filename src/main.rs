@@ -8,14 +8,9 @@ mod ir;
 mod parse;
 mod source;
 
-use args::{OutputFormat, TopLevelArgs};
-
 fn main() {
     let args = args::TopLevelArgs::parse();
-    let result = match args.output_format() {
-        OutputFormat::Wat => cmd::compile(&args),
-        OutputFormat::Ast => cmd::parse(&args),
-    };
+    let result = cmd::compile(&args);
     match result {
         Ok(_) => {}
         Err(e) => {

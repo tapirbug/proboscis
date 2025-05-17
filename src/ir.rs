@@ -13,7 +13,7 @@ mod variant;
 pub use data::DataAddress;
 pub use databuilder::{StaticData, StaticDataBuilder};
 pub use datatype::{IrDataType, IrDataTypeTag};
-pub use func::{Function, StaticFunctionAddress};
+pub use func::{Function, FunctionAttribute, StaticFunctionAddress};
 pub use funcbuilder::FunctionsBuilder;
 pub use functable::FunctionTableIndex;
 pub use inmem::type_to_tag_bytes;

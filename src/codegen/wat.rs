@@ -1,17 +1,15 @@
 use std::{
-    fmt::{self, write},
-    fs,
+    fmt, fs,
     io::{self, Write},
     mem,
-    path::Path,
 };
 
 use crate::ir::{
-    AddressingMode, Function, Instruction, IrDataType, PlaceAddress, Program,
-    StaticData,
+    AddressingMode, FunctionAttribute, Instruction, IrDataType, PlaceAddress,
+    Program, StaticData,
 };
 
-use super::locals::local_places_byte_len;
+use super::locals::LocalPlacesInfo;
 
 const RUNTIME_PATH: &str = "rt/rt.wat";
 
@@ -27,8 +25,8 @@ pub fn write_wat<W: Write>(w: &mut W, program: &Program) -> io::Result<()> {
     write_tables(w, program.static_data())?;
     write_runtime_variables(w, program.static_data())?;
     write_runtime_functions(w)?;
-    for (idx, function) in program.functions().iter().enumerate() {
-        write_function(w, function, idx, program.static_data())?;
+    for (idx, _) in program.functions().iter().enumerate() {
+        write_function(w, program, idx)?;
     }
     write!(w, ")\n")?; // closing module
     Ok(())
@@ -97,27 +95,55 @@ fn write_static_data<W: Write>(
 
 fn write_function<W: Write>(
     w: &mut W,
-    function: &Function,
+    program: &Program,
     idx: usize,
-    static_data: &StaticData,
 ) -> io::Result<()> {
-    let locals_byte_len = local_places_byte_len(function.instructions());
+    let static_data = program.static_data();
+    let function = &program.functions()[idx];
+    let locals = LocalPlacesInfo::extract(function, program);
     let mut next_block_num = 1;
     let mut block_stack: Vec<i32> = vec![];
 
+    write!(w, ";; {}\n", function.name())?;
     write!(w, "\t(func $fun{} ", idx)?;
     if let Some(name) = function.export_name() {
         write!(w, "(export \"{}\") ", name)?;
     }
     write!(
         w,
-        "(param i32) (result i32) (local i32) (local $retval i32)\n"
+        "(param $param_head i32) (param $persistent_bottom i32) (result i32) (local $tmp i32) (local $retval i32)\n"
     )?;
 
-    // allocate stack frame
-    if locals_byte_len > 0 {
-        write!(w, "\t\ti32.const {}\n", locals_byte_len)?;
-        write!(w, "\t\tcall $inc_stack_bottom\n")?;
+    // function prologue
+    if let Some(ref locals) = locals {
+        write!(w, "\t\t;; start of function prologue\n")?;
+        match locals.mode() {
+            AddressingMode::Global => unreachable!(),
+            // allocate stack frame if local
+            AddressingMode::Local => {
+                write!(w, "\t\ti32.const {}\n", locals.len())?;
+                write!(w, "\t\tcall $inc_stack_bottom\n")?;
+            }
+            AddressingMode::Persistent => {
+                if function
+                    .attributes()
+                    .contains(&FunctionAttribute::CreatesPersistentPlaces)
+                {
+                    // if persistent, reserve space for all the lambdas on the top-level function
+                    write!(w, "\t\ti32.const {}\n", locals.len())?;
+                    write!(w, "\t\tcall $alloc_heap\n")?;
+                    write!(w, "\t\tlocal.set $persistent_bottom\n")?;
+                } else if function
+                    .attributes()
+                    .contains(&FunctionAttribute::AcceptsPersistentPlaces)
+                {
+                    // then in lambdas called from there, we can use the value of $persistent_bottom passed in, and don't need to do anything special
+                } else {
+                    panic!("did not expect persistent addressing here, weird")
+                }
+            }
+        }
+        write!(w, "\t\t;; end of function prologue\n")?;
     }
 
     write!(w, "\t\t(block $body\n")?;
@@ -158,23 +184,23 @@ fn write_function<W: Write>(
             Instruction::Cons { car, cdr, to } => {
                 // type tag, car address, cdr address
                 write_heap_alloc(w, mem::size_of::<i32>() * 3)?;
-                write!(w, "\t\t\tlocal.set 1\n")?; // remember the allocation
+                write!(w, "\t\t\tlocal.set $tmp\n")?; // remember the allocation
 
                 // write tag at offset 0
-                write!(w, "\t\t\tlocal.get 1\n")?;
+                write!(w, "\t\t\tlocal.get $tmp\n")?;
                 let tag = IrDataType::ListNode.to_u32();
                 write!(w, "\t\t\ti32.const {}\n", tag)?;
                 write!(w, "\t\t\ti32.store\n")?;
 
                 // load car address and write at offset 1
-                write!(w, "\t\t\tlocal.get 1\n")?;
+                write!(w, "\t\t\tlocal.get $tmp\n")?;
                 write!(w, "\t\t\ti32.const {}\n", mem::size_of::<i32>())?;
                 write!(w, "\t\t\ti32.add\n")?;
                 write_load_place_referee(w, car)?;
                 write!(w, "\t\t\ti32.store\n")?;
 
                 // load cdr address and write at offset 2
-                write!(w, "\t\t\tlocal.get 1\n")?;
+                write!(w, "\t\t\tlocal.get $tmp\n")?;
                 write!(w, "\t\t\ti32.const {}\n", 2 * mem::size_of::<i32>())?;
                 write!(w, "\t\t\ti32.add\n")?;
                 write_load_place_referee(w, cdr)?;
@@ -182,7 +208,7 @@ fn write_function<W: Write>(
 
                 // finally, remember the list in the target place
                 write_load_place_self_address(w, to)?;
-                write!(w, "\t\t\tlocal.get 1\n")?;
+                write!(w, "\t\t\tlocal.get $tmp\n")?;
                 write!(w, "\t\t\ti32.store\n")?;
             }
             Instruction::WritePlace { from, to } => {
@@ -195,9 +221,14 @@ fn write_function<W: Write>(
                 params,
                 to,
             } => {
-                // remember the previous local offset before the call
+                write!(
+                    w,
+                    "\t\t\t;; calling {}\n",
+                    program.resolve_function_addr(function).name()
+                )?;
                 write_load_place_self_address(w, to)?;
                 write_load_place_referee(w, params)?;
+                write!(w, "\t\t\ti32.const 0\n")?; // target of direct call never uses persistent storage, so 0
                 write!(w, "\t\t\tcall $fun{}\n", function.to_i32())?;
                 write!(w, "\t\t\ti32.store\n")?;
             }
@@ -206,10 +237,10 @@ fn write_function<W: Write>(
                 params,
                 to,
             } => {
-                // remember the previous local offset before the call
                 write_load_place_self_address(w, to)?;
                 write_load_place_referee(w, function)?;
                 write_load_place_referee(w, params)?;
+                // persistent parameter comes from the storage of the function
                 write!(w, "\t\t\tcall $call_function\n")?;
                 write!(w, "\t\t\ti32.store\n")?;
             }
@@ -220,34 +251,25 @@ fn write_function<W: Write>(
                 // branch out of body and deallocate stack frame, leaving return value in place
                 write!(w, "\t\t\tbr $body\n")?;
             }
-            Instruction::CreateClosure { to } => {
-                /*write!(w, "\t\t\tcall $alloc_new_stack\n")?;
-                write!(w, "\t\t\tlocal.set 1\n")?;
-                write!(w, "\t\t\tlocal.get 1\n")?;
-                write!(w, "\t\t\tcall $push_stack\n")?;
-                write_load_place_self_address(w, to)?;
-                write!(w, "\t\t\tlocal.get 1\n")?;
-                write!(w, "\t\t\ti32.store\n")?;*/
-                todo!("closures not yet supported")
-            }
-            Instruction::CreateFunction {
-                closure,
-                to,
-                function,
-            } => {
+            Instruction::CreateFunction { to, function } => {
+                write!(
+                    w,
+                    "\t\t\t;; creating function with code at {}\n",
+                    program.resolve_function_idx(function).name()
+                )?;
                 write_load_place_self_address(w, to)?;
                 write!(w, "\t\t\ti32.const {}\n", function.to_u32())?;
-                write_load_place_referee(w, closure)?;
+                write!(w, "\t\t\tlocal.get $persistent_bottom\n")?;
                 write!(w, "\t\t\tcall $make_function\n")?;
                 write!(w, "\t\t\ti32.store\n")?;
             }
             Instruction::CallPrint { string } => {
                 write_load_place_referee(w, string)?;
-                write!(w, "\t\t\tlocal.set 1\n")?; // remember the string start address
-                write!(w, "\t\t\tlocal.get 1\n")?;
+                write!(w, "\t\t\tlocal.set $tmp\n")?; // remember the string start address
+                write!(w, "\t\t\tlocal.get $tmp\n")?;
                 write!(w, "\t\t\ti32.const {}\n", 2 * mem::size_of::<i32>())?; // skip the tag and length and go to the character data
                 write!(w, "\t\t\ti32.add\n")?;
-                write!(w, "\t\t\tlocal.get 1\n")?;
+                write!(w, "\t\t\tlocal.get $tmp\n")?;
                 write!(w, "\t\t\ti32.const {}\n", mem::size_of::<i32>())?; // then load the length in bytes
                 write!(w, "\t\t\ti32.add\n")?;
                 write!(w, "\t\t\ti32.load\n")?;
@@ -257,25 +279,25 @@ fn write_function<W: Write>(
                 // load address of target place
                 write_load_place_self_address(w, to)?;
                 // load the passed location of argument list
-                write!(w, "\t\t\tlocal.get 0\n")?;
+                write!(w, "\t\t\tlocal.get $param_head\n")?;
                 // skip type tag and go to car, load it, and store it in target place
                 write!(w, "\t\t\ti32.const {}\n", mem::size_of::<i32>())?;
                 write!(w, "\t\t\ti32.add\n")?;
                 write!(w, "\t\t\ti32.load\n")?;
                 write!(w, "\t\t\ti32.store\n")?;
                 // load the passed location of argument list again
-                write!(w, "\t\t\tlocal.get 0\n")?;
+                write!(w, "\t\t\tlocal.get $param_head\n")?;
                 // skip type tag and go to cdr, load it, and store it as new argument list
                 write!(w, "\t\t\ti32.const {}\n", 2 * mem::size_of::<i32>())?;
                 write!(w, "\t\t\ti32.add\n")?;
                 write!(w, "\t\t\ti32.load\n")?;
-                write!(w, "\t\t\tlocal.set 0\n")?;
+                write!(w, "\t\t\tlocal.set $param_head\n")?;
             }
             Instruction::ConsumeRest { to } => {
                 // load address of target place
                 write_load_place_self_address(w, to)?;
                 // load the passed location of argument list
-                write!(w, "\t\t\tlocal.get 0\n")?;
+                write!(w, "\t\t\tlocal.get $param_head\n")?;
                 // and directly store a reference to the list
                 write!(w, "\t\t\ti32.store\n")?;
             }
@@ -598,12 +620,23 @@ fn write_function<W: Write>(
     // end of body block
     write!(w, "\t\t\t);; end body\n")?;
 
-    // deallocate stack frame
-    if locals_byte_len > 0 {
-        write!(w, "\t\ti32.const {}\n", -locals_byte_len)?;
-        write!(w, "\t\tcall $inc_stack_bottom\n")?;
+    // function epilogue
+    write!(w, "\t\t;; start of function epilogue\n")?;
+    if let Some(ref locals) = locals {
+        match locals.mode() {
+            AddressingMode::Global => unreachable!(),
+            // deallocate stack frame if locals are used
+            AddressingMode::Local => {
+                write!(w, "\t\ti32.const {}\n", -locals.len())?;
+                write!(w, "\t\tcall $inc_stack_bottom\n")?;
+            }
+            AddressingMode::Persistent => {
+                // nothing to deallocate in terms of places for persistent storage, they must be preserved
+            }
+        }
         write!(w, "\t\tlocal.get $retval\n")?;
     }
+    write!(w, "\t\t;; end of function epilogue\n")?;
 
     write!(w, "\t)\n")?;
     Ok(())
@@ -615,12 +648,23 @@ fn write_load_place_self_address<W: Write>(
     from: PlaceAddress,
 ) -> io::Result<()> {
     let offset = from.offset() as usize;
+
     match from.mode() {
         // local variables are below the stack bottom that gets bumped on entry
         AddressingMode::Local => {
             write!(w, "\t\t\tglobal.get $stack_bottom\n")?;
-            write!(w, "\t\t\ti32.const {}\n", offset)?;
+            write!(
+                w,
+                "\t\t\ti32.const {}\n",
+                (offset + mem::size_of::<i32>())
+            )?;
             write!(w, "\t\t\ti32.sub\n")
+        }
+        // persistent are addressed from the beginning, so no extra needed
+        AddressingMode::Persistent => {
+            write!(w, "\t\t\tlocal.get $persistent_bottom\n")?;
+            write!(w, "\t\t\ti32.const {}\n", offset)?;
+            write!(w, "\t\t\ti32.add\n")
         }
         AddressingMode::Global => {
             write!(w, "\t\t\ti32.const {}\n", offset)

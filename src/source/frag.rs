@@ -174,7 +174,17 @@ impl<'s> fmt::Display for SourceContext<'s> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let (from, to) = self.0.from_to_positions();
         let first_line = self.0.first_line();
-        writeln!(f, "At line {}:", from.line_no())?;
+        writeln!(
+            f,
+            "{} at line {}:{}",
+            self.0
+                .source
+                .path()
+                .map(|p| p.to_str().unwrap())
+                .unwrap_or("<builtin>"),
+            from.line_no(),
+            from.col_no()
+        )?;
         writeln!(f, "{}", first_line)?;
         let highlight_from = from.col_no() - 1;
         let highlight_to = if from.line_no() == to.line_no() {

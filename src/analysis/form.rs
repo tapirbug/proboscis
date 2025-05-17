@@ -14,8 +14,13 @@ pub enum Form<'s, 't> {
     IfForm(IfForm<'s, 't>),
     AndForm(AndForm<'s, 't>),
     OrForm(OrForm<'s, 't>),
+    /// Usual function application like (+ 1 2)
     Call(Call<'s, 't>),
+    /// Apply builtin with function as first argument and param list second.
     Apply(Apply<'s, 't>),
+    /// Similar to apply, but arguments are passed individually and not as list
+    Funcall(Funcall<'s, 't>),
+    Lambda(Lambda<'s, 't>),
 }
 
 pub struct Name<'s, 't> {
@@ -67,12 +72,26 @@ pub struct LetForm<'s, 't> {
     body: Vec<Form<'s, 't>>,
 }
 
+pub struct Lambda<'s, 't> {
+    source: Source<'s>,
+    positional_args: Vec<&'t Atom<'s>>,
+    body: Vec<Form<'s, 't>>,
+}
+
 pub struct Apply<'s, 't> {
     source: Source<'s>,
     /// Something that can be resolved to a function.
     function: Box<Form<'s, 't>>,
-    /// Arg list can be calculated at runtime.
+    /// Something that evaluates to a single argument list
     args: Box<Form<'s, 't>>,
+}
+
+pub struct Funcall<'s, 't> {
+    source: Source<'s>,
+    /// Something that can be resolved to a function.
+    function: Box<Form<'s, 't>>,
+    /// Individual arguments to be built into a list and passed as arguments.
+    args: Vec<Form<'s, 't>>,
 }
 
 impl<'s, 't> Form<'s, 't> {
@@ -130,11 +149,22 @@ impl<'s, 't> Form<'s, 't> {
                 {
                     return Ok(Form::Apply(apply_static));
                 }
+                if let Some(lambda) =
+                    Lambda::extract_assume_nonempty(source, non_empty)?
+                {
+                    return Ok(Form::Lambda(lambda));
+                }
+                if let Some(form) =
+                    Funcall::extract_assume_nonempty(source, non_empty)?
+                {
+                    return Ok(Form::Funcall(form));
+                }
                 Form::Call(Call::extract_assume_nonempty(source, non_empty)?)
             }
         })
     }
 
+    #[cfg(test)]
     pub fn name(&self) -> Option<&Name<'s, 't>> {
         match self {
             Self::Name(name) => Some(name),
@@ -156,6 +186,7 @@ impl<'s, 't> Form<'s, 't> {
         }
     }
 
+    #[cfg(test)]
     pub fn if_form(&self) -> Option<&IfForm<'s, 't>> {
         match self {
             Self::IfForm(i) => Some(i),
@@ -163,9 +194,26 @@ impl<'s, 't> Form<'s, 't> {
         }
     }
 
+    #[cfg(test)]
     pub fn call(&self) -> Option<&Call<'s, 't>> {
         match self {
             Self::Call(c) => Some(c),
+            _ => None,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn lambda(&self) -> Option<&Lambda<'s, 't>> {
+        match self {
+            Self::Lambda(l) => Some(l),
+            _ => None,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn funcall(&self) -> Option<&Funcall<'s, 't>> {
+        match self {
+            Self::Funcall(c) => Some(c),
             _ => None,
         }
     }
@@ -410,6 +458,58 @@ impl<'s, 't> Apply<'s, 't> {
     }
 }
 
+impl<'s, 't> Funcall<'s, 't> {
+    fn extract_assume_nonempty(
+        source: Source<'s>,
+        form: &'t List<'s>,
+    ) -> Result<Option<Funcall<'s, 't>>, FormError<'s, 't>> {
+        let mut elements = form.elements().iter();
+
+        let head = elements.next().unwrap();
+        let is_funcall = match head {
+            AstNode::Atom(first)
+                if first.source_range().of(source).source() == "funcall" =>
+            {
+                true
+            }
+            _ => false,
+        };
+        if !is_funcall {
+            return Ok(None);
+        }
+        let head = head.atom().unwrap();
+
+        let func = Form::extract(
+            source,
+            elements.next().ok_or_else(|| FormError::FuncallTooShort {
+                source,
+                atom: head,
+            })?,
+        )?;
+        let args = elements
+            .map(|e| Form::extract(source, e))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(Some(Funcall {
+            source,
+            function: Box::new(func),
+            args,
+        }))
+    }
+
+    pub fn source(&self) -> Source<'s> {
+        self.source
+    }
+
+    pub fn function<'a>(&'a self) -> &'a Form<'s, 't> {
+        self.function.as_ref()
+    }
+
+    pub fn args<'a>(&'a self) -> &'a [Form<'s, 't>] {
+        &self.args
+    }
+}
+
 impl<'s, 't> LetForm<'s, 't> {
     fn extract_assume_nonempty(
         source: Source<'s>,
@@ -512,6 +612,76 @@ impl<'s, 't> Binding<'s, 't> {
     }
 }
 
+impl<'s, 't> Lambda<'s, 't> {
+    fn extract_assume_nonempty(
+        source: Source<'s>,
+        form: &'t List<'s>,
+    ) -> Result<Option<Lambda<'s, 't>>, FormError<'s, 't>> {
+        let mut elements = form.elements().iter();
+
+        let head = elements.next().unwrap();
+        let is_lambda = match head {
+            AstNode::Atom(first)
+                if first.source_range().of(source).source() == "lambda" =>
+            {
+                true
+            }
+            _ => false,
+        };
+        if !is_lambda {
+            // ignore root-level directive that is not a lambda
+            return Ok(None);
+        }
+
+        let head = head.atom().unwrap();
+        let params = elements
+            .next()
+            .ok_or_else(|| FormError::LambdaTooShort { source, atom: head })?;
+        let params_list = params.list().ok_or_else(|| {
+            FormError::MalformedLambdaArguments {
+                source,
+                atom: params,
+            }
+        })?;
+
+        let body = elements
+            .map(|e| Form::extract(source, e))
+            .collect::<Result<Vec<_>, _>>()?;
+        if body.is_empty() {
+            return Err(FormError::LambdaTooShort { source, atom: head });
+        }
+
+        let positional_args = params_list
+            .elements()
+            .iter()
+            .map(|p| {
+                p.atom().ok_or_else(|| FormError::MalformedLambdaArguments {
+                    source,
+                    atom: p,
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(Some(Lambda {
+            source,
+            positional_args,
+            body,
+        }))
+    }
+
+    pub fn source(&self) -> Source<'s> {
+        self.source
+    }
+
+    pub fn positional_args(&self) -> &[&'t Atom<'s>] {
+        &self.positional_args
+    }
+
+    pub fn body(&self) -> &[Form<'s, 't>] {
+        &self.body
+    }
+}
+
 impl<'s, 't> Call<'s, 't> {
     /// The call form matches everything else, so we have to try it last.
     ///
@@ -610,6 +780,18 @@ pub enum FormError<'s, 't> {
         source: Source<'s>,
         atom: &'t Atom<'s>,
     },
+    LambdaTooShort {
+        source: Source<'s>,
+        atom: &'t Atom<'s>,
+    },
+    MalformedLambdaArguments {
+        source: Source<'s>,
+        atom: &'t AstNode<'s>,
+    },
+    FuncallTooShort {
+        source: Source<'s>,
+        atom: &'t Atom<'s>,
+    },
 }
 
 impl<'s, 't> fmt::Display for FormError<'s, 't> {
@@ -670,6 +852,66 @@ impl<'s, 't> fmt::Display for FormError<'s, 't> {
                 writeln!(f, "apply has too many arguments")?;
                 writeln!(f, "{}", atom.fragment(*source).source_context())
             }
+            FormError::LambdaTooShort { source, atom } => {
+                writeln!(f, "lambda is missing arguments or body")?;
+                writeln!(f, "{}", atom.fragment(*source).source_context())
+            }
+            FormError::MalformedLambdaArguments { source, atom } => {
+                writeln!(f, "lambda arguments must be a list of identifiers")?;
+                writeln!(f, "{}", atom.fragment(*source).source_context())
+            }
+            FormError::FuncallTooShort { source, atom } => {
+                writeln!(f, "funcall is missing the function to call")?;
+                writeln!(f, "{}", atom.fragment(*source).source_context())
+            }
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{parse::Parser, source::SourceSet};
+
+    use super::*;
+
+    #[test]
+    fn extract_lambda() {
+        let src = SourceSet::new_debug("(lambda (c) (+ a b c))");
+        let src = src.one();
+        let ast = Parser::new(src).parse().unwrap();
+        let ast = ast.iter().next().unwrap();
+        let form = Form::extract(src, ast).unwrap();
+        let form = form.lambda().unwrap();
+        assert_eq!(form.positional_args()[0].fragment(src).source(), "c");
+        assert!(form.body()[0].call().is_some())
+    }
+
+    #[test]
+    fn extract_funcall() {
+        let src = SourceSet::new_debug("(funcall #'+ 1 2)");
+        let src = src.one();
+        let ast = Parser::new(src).parse().unwrap();
+        let ast = ast.iter().next().unwrap();
+        let form = Form::extract(src, ast).unwrap();
+        let form = form.funcall().unwrap();
+        assert_eq!(form.function().function_name().unwrap().as_str(), "+");
+        assert_eq!(
+            form.args()[0]
+                .constant()
+                .unwrap()
+                .node()
+                .fragment(src)
+                .source(),
+            "1"
+        );
+        assert_eq!(
+            form.args()[1]
+                .constant()
+                .unwrap()
+                .node()
+                .fragment(src)
+                .source(),
+            "2"
+        );
     }
 }

@@ -52,4 +52,5 @@
 
 (defun dump (first &rest rest)
     (format t (to-string-any first))
-    (if rest (apply #'dump rest)))
+    (if rest (apply #'dump rest))
+    first)

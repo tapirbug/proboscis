@@ -6,13 +6,17 @@
 ;; (global $stack_top i32 (i32.const {}))
 ;; (global $heap_start (mut i32) (i32.const {}))
 
-(type $user_fun (func (param i32) (result i32)))
+(type $user_fun (func (param i32) (param i32) (result i32)))
 
-;; indirect function call via function object, possibly switching to a new
-;; stack for the call
+;; indirect function call via function object
 (func $call_function (param $func_addr i32) (param $params_addr i32) (result i32) (local $retval i32)
-    ;; if we end up here, there is no custom stack for the call
+    ;; load params as first parameter
     local.get $params_addr
+    ;; load persistent base address as second parameter
+    local.get $func_addr
+    i32.const 8
+    i32.add
+    i32.load
     ;; load function index
     local.get $func_addr
     i32.const 4
@@ -21,86 +25,19 @@
     call_indirect (type $user_fun)
 )
 
-(func $call_function_old (param $func_addr i32) (param $params_addr i32) (result i32) (local $retval i32)
-    (block $without_stack
-        (block $with_stack
-            ;; load stack address
-            local.get $func_addr
-            i32.const 8
-            i32.add
-            i32.load
-            br_if $with_stack
-            ;; if we end up here, there is no custom stack for the call
-            local.get $params_addr
-            ;; load function index
-            local.get $func_addr
-            i32.const 4
-            i32.add
-            i32.load
-            call_indirect
-			local.set $retval
-            br $without_stack
-            )
-        ;; if we end up here there is a custom stack
-        ;; enter stack
-        local.get $func_addr
-        i32.const 8
-        i32.add
-        i32.load
-        call $push_stack
-
-        local.get $params_addr
-        ;; load function index
-        local.get $func_addr
-        i32.const 4
-        i32.add
-        i32.load
-        call_indirect
-		local.set $retval
-
-        ;; exit stack
-        call $pop_stack
-        )
-	local.get $retval
-)
-
 (func $inc_stack_bottom (param $by i32)
     global.get $stack_bottom
     local.get $by
     i32.add
     global.set $stack_bottom)
 
-;; allocates space for a new stack, and returns the start
-(func $alloc_new_stack (result i32)
+;; allocates space on the heap and returns the start
+(func $alloc_heap (param $bytes i32) (result i32)
     global.get $heap_start ;; return value
     global.get $heap_start ;; new value to be written
-    i32.const 1024 ;; allocate 1024 bytes of stack
+    local.get $bytes
     i32.add
     global.set $heap_start
-)
-
-;; enter a stack and remember the previous stack on the new stack
-(func $push_stack (param $new_stack i32)
-    ;; back up previous values on the new stack
-    local.get $new_stack
-    global.get $stack_bottom
-    i32.store
-
-    ;; then use the area after the new values as the new stack
-    local.get $new_stack
-    i32.const 4
-    i32.add
-    global.set $stack_bottom
-)
-
-;; pop a return stack from below the stack bottom and switch to it
-(func $pop_stack
-    ;; get previous stack bottom and local offset and restore them
-    global.get $stack_bottom
-    i32.const 4
-    i32.sub
-    i32.load
-    global.set $stack_bottom
 )
 
 (func $make_function (param $table_idx i32) (param $stack i32) (result i32)

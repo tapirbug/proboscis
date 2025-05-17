@@ -5,16 +5,23 @@ pub struct PlaceAddress {
     offset: i32,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum AddressingMode {
-    // accessing a local place
+    /// accessing a local place
     Local,
-    // accessing a place relative to the beginning of memory, used for global
-    // variables
+    /// accessing a place relative to the beginning of memory, used for global
+    /// variables
     Global,
+    /// addressing in persistent storage that is preserved after function
+    /// returns
+    Persistent,
 }
 
 impl PlaceAddress {
+    pub fn new(mode: AddressingMode, offset: i32) -> Self {
+        Self { mode, offset }
+    }
+
     pub fn new_global(absolute_address: i32) -> Self {
         Self {
             mode: AddressingMode::Global,
@@ -23,6 +30,13 @@ impl PlaceAddress {
     }
 
     pub fn new_local(local_place_byte_offset: i32) -> Self {
+        Self {
+            mode: AddressingMode::Local,
+            offset: local_place_byte_offset,
+        }
+    }
+
+    pub fn new_persistent(local_place_byte_offset: i32) -> Self {
         Self {
             mode: AddressingMode::Local,
             offset: local_place_byte_offset,

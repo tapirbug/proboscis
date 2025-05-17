@@ -1,13 +1,10 @@
 use std::fmt;
 
-use crate::{
-    parse::{AstNode, AstSet},
-    source::Source,
-};
+use crate::{parse::AstSet, source::Source};
 
 use super::{
     FunctionDefinition, FunctionDefinitionError, GlobalDefinition,
-    GlobalDefinitionError, NameError,
+    GlobalDefinitionError,
     form::{Form, FormError},
 };
 
@@ -96,16 +93,9 @@ impl<'s, 't> SemanticAnalysis<'s, 't> {
 
 #[derive(Debug)]
 pub enum SemanticAnalysisError<'s, 't> {
-    Name(NameError<'s, 't>),
     FunctionDefinition(FunctionDefinitionError<'s, 't>),
     GlobalDefinition(GlobalDefinitionError<'s, 't>),
     RootFormError(FormError<'s, 't>),
-}
-
-impl<'s, 't> From<NameError<'s, 't>> for SemanticAnalysisError<'s, 't> {
-    fn from(value: NameError<'s, 't>) -> Self {
-        Self::Name(value)
-    }
 }
 
 impl<'s, 't> From<FunctionDefinitionError<'s, 't>>
@@ -127,7 +117,6 @@ impl<'s, 't> From<GlobalDefinitionError<'s, 't>>
 impl<'s, 't> fmt::Display for SemanticAnalysisError<'s, 't> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Name(error) => write!(f, "{}", error),
             Self::FunctionDefinition(error) => write!(f, "{}", error),
             Self::GlobalDefinition(error) => write!(f, "{}", error),
             Self::RootFormError(e) => write!(f, "{e}"),
