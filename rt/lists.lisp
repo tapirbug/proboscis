@@ -18,3 +18,31 @@
 
 (defun null (thingy)
     (if thingy nil t))
+
+(defun append (&rest lists)
+    (let (
+        (first (car lists))
+        (rest (cdr lists)))
+        (if (null rest)
+            first
+            (apply #'append (cons (append-2 first (car rest)) (cdr rest))))))
+
+;; this could maybe be private or letf
+(defun append-2 (before after)
+    (if (null before)
+        after
+        (if (null after)
+            before
+            (if (null (cdr before))
+                ;; last item
+                (cons (car before) after)
+                ;; item before
+                (cons (car before) (append-2 (cdr before) after))))))
+
+
+(defun remove-if-not (func list)
+    (if (null list)
+        nil
+        (if (funcall func (car list))
+            (cons (car list) (remove-if-not func (cdr list)))
+            (remove-if-not func (cdr list)))))
