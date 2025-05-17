@@ -9,7 +9,7 @@ use crate::ir::{
     Program, StaticData,
 };
 
-use super::locals::LocalPlacesInfo;
+use super::locals::{LocalPlacesInfo, LocalStrategy};
 
 const RUNTIME_PATH: &str = "rt/rt.wat";
 
@@ -117,14 +117,12 @@ fn write_function<W: Write>(
     // function prologue
     if let Some(ref locals) = locals {
         write!(w, "\t\t;; start of function prologue\n")?;
-        match locals.mode() {
-            AddressingMode::Global => unreachable!(),
-            // allocate stack frame if local
-            AddressingMode::Local => {
+        match locals.strategy() {
+            LocalStrategy::Stack => {
                 write!(w, "\t\ti32.const {}\n", locals.len())?;
                 write!(w, "\t\tcall $inc_stack_bottom\n")?;
             }
-            AddressingMode::Persistent => {
+            LocalStrategy::Heap => {
                 if function
                     .attributes()
                     .contains(&FunctionAttribute::CreatesPersistentPlaces)
@@ -133,14 +131,7 @@ fn write_function<W: Write>(
                     write!(w, "\t\ti32.const {}\n", locals.len())?;
                     write!(w, "\t\tcall $alloc_heap\n")?;
                     write!(w, "\t\tlocal.set $persistent_bottom\n")?;
-                } else if function
-                    .attributes()
-                    .contains(&FunctionAttribute::AcceptsPersistentPlaces)
-                {
-                    // then in lambdas called from there, we can use the value of $persistent_bottom passed in, and don't need to do anything special
-                } else {
-                    panic!("did not expect persistent addressing here, weird")
-                }
+                } // lambdas themselves don't need to reserve anything in the prologue
             }
         }
         write!(w, "\t\t;; end of function prologue\n")?;
@@ -152,20 +143,20 @@ fn write_function<W: Write>(
         write!(w, "\t\t;; {:?}\n", instruction)?;
         match instruction {
             Instruction::LoadData { data, to } => {
-                write_load_place_self_address(w, to)?;
+                write_load_place_self_address(w, &locals, to)?;
                 write!(w, "\t\t\ti32.const {}\n", data.offset())?;
                 write!(w, "\t\t\ti32.store\n")?;
             }
             Instruction::LoadTypeTag { of, to } => {
-                write_load_place_self_address(w, to)?;
-                write_load_place_referee(w, of)?;
+                write_load_place_self_address(w, &locals, to)?;
+                write_load_place_referee(w, &locals, of)?;
                 write!(w, "\t\t\ti32.load\n")?;
                 write!(w, "\t\t\tcall $make_num\n")?;
                 write!(w, "\t\t\ti32.store\n")?;
             }
             Instruction::LoadCar { list, to } => {
-                write_load_place_self_address(w, to)?;
-                write_load_place_referee(w, list)?;
+                write_load_place_self_address(w, &locals, to)?;
+                write_load_place_referee(w, &locals, list)?;
                 // skip one to go to car after type and load
                 write!(w, "\t\t\ti32.const {}\n", mem::size_of::<i32>())?;
                 write!(w, "\t\t\ti32.add\n")?;
@@ -173,8 +164,8 @@ fn write_function<W: Write>(
                 write!(w, "\t\t\ti32.store\n")?;
             }
             Instruction::LoadCdr { list, to } => {
-                write_load_place_self_address(w, to)?;
-                write_load_place_referee(w, list)?;
+                write_load_place_self_address(w, &locals, to)?;
+                write_load_place_referee(w, &locals, list)?;
                 // skip two to go to cdr after type and car and load
                 write!(w, "\t\t\ti32.const {}\n", 2 * mem::size_of::<i32>())?;
                 write!(w, "\t\t\ti32.add\n")?;
@@ -196,24 +187,24 @@ fn write_function<W: Write>(
                 write!(w, "\t\t\tlocal.get $tmp\n")?;
                 write!(w, "\t\t\ti32.const {}\n", mem::size_of::<i32>())?;
                 write!(w, "\t\t\ti32.add\n")?;
-                write_load_place_referee(w, car)?;
+                write_load_place_referee(w, &locals, car)?;
                 write!(w, "\t\t\ti32.store\n")?;
 
                 // load cdr address and write at offset 2
                 write!(w, "\t\t\tlocal.get $tmp\n")?;
                 write!(w, "\t\t\ti32.const {}\n", 2 * mem::size_of::<i32>())?;
                 write!(w, "\t\t\ti32.add\n")?;
-                write_load_place_referee(w, cdr)?;
+                write_load_place_referee(w, &locals, cdr)?;
                 write!(w, "\t\t\ti32.store\n")?;
 
                 // finally, remember the list in the target place
-                write_load_place_self_address(w, to)?;
+                write_load_place_self_address(w, &locals, to)?;
                 write!(w, "\t\t\tlocal.get $tmp\n")?;
                 write!(w, "\t\t\ti32.store\n")?;
             }
             Instruction::WritePlace { from, to } => {
-                write_load_place_self_address(w, to)?;
-                write_load_place_referee(w, from)?;
+                write_load_place_self_address(w, &locals, to)?;
+                write_load_place_referee(w, &locals, from)?;
                 write!(w, "\t\t\ti32.store\n")?;
             }
             Instruction::Call {
@@ -226,8 +217,8 @@ fn write_function<W: Write>(
                     "\t\t\t;; calling {}\n",
                     program.resolve_function_addr(function).name()
                 )?;
-                write_load_place_self_address(w, to)?;
-                write_load_place_referee(w, params)?;
+                write_load_place_self_address(w, &locals, to)?;
+                write_load_place_referee(w, &locals, params)?;
                 write!(w, "\t\t\ti32.const 0\n")?; // target of direct call never uses persistent storage, so 0
                 write!(w, "\t\t\tcall $fun{}\n", function.to_i32())?;
                 write!(w, "\t\t\ti32.store\n")?;
@@ -237,16 +228,16 @@ fn write_function<W: Write>(
                 params,
                 to,
             } => {
-                write_load_place_self_address(w, to)?;
-                write_load_place_referee(w, function)?;
-                write_load_place_referee(w, params)?;
+                write_load_place_self_address(w, &locals, to)?;
+                write_load_place_referee(w, &locals, function)?;
+                write_load_place_referee(w, &locals, params)?;
                 // persistent parameter comes from the storage of the function
                 write!(w, "\t\t\tcall $call_function\n")?;
                 write!(w, "\t\t\ti32.store\n")?;
             }
             Instruction::Return { value } => {
                 // keep the return value on the stack when branching out of body
-                write_load_place_referee(w, value)?;
+                write_load_place_referee(w, &locals, value)?;
                 write!(w, "\t\t\tlocal.set $retval\n")?;
                 // branch out of body and deallocate stack frame, leaving return value in place
                 write!(w, "\t\t\tbr $body\n")?;
@@ -257,14 +248,14 @@ fn write_function<W: Write>(
                     "\t\t\t;; creating function with code at {}\n",
                     program.resolve_function_idx(function).name()
                 )?;
-                write_load_place_self_address(w, to)?;
+                write_load_place_self_address(w, &locals, to)?;
                 write!(w, "\t\t\ti32.const {}\n", function.to_u32())?;
                 write!(w, "\t\t\tlocal.get $persistent_bottom\n")?;
                 write!(w, "\t\t\tcall $make_function\n")?;
                 write!(w, "\t\t\ti32.store\n")?;
             }
             Instruction::CallPrint { string } => {
-                write_load_place_referee(w, string)?;
+                write_load_place_referee(w, &locals, string)?;
                 write!(w, "\t\t\tlocal.set $tmp\n")?; // remember the string start address
                 write!(w, "\t\t\tlocal.get $tmp\n")?;
                 write!(w, "\t\t\ti32.const {}\n", 2 * mem::size_of::<i32>())?; // skip the tag and length and go to the character data
@@ -277,7 +268,7 @@ fn write_function<W: Write>(
             }
             Instruction::ConsumeParam { to } => {
                 // load address of target place
-                write_load_place_self_address(w, to)?;
+                write_load_place_self_address(w, &locals, to)?;
                 // load the passed location of argument list
                 write!(w, "\t\t\tlocal.get $param_head\n")?;
                 // skip type tag and go to car, load it, and store it in target place
@@ -295,27 +286,27 @@ fn write_function<W: Write>(
             }
             Instruction::ConsumeRest { to } => {
                 // load address of target place
-                write_load_place_self_address(w, to)?;
+                write_load_place_self_address(w, &locals, to)?;
                 // load the passed location of argument list
                 write!(w, "\t\t\tlocal.get $param_head\n")?;
                 // and directly store a reference to the list
                 write!(w, "\t\t\ti32.store\n")?;
             }
             Instruction::ConcatStringLike { left, right, to } => {
-                write_load_place_self_address(w, to)?;
-                write_load_place_referee(w, left)?;
-                write_load_place_referee(w, right)?;
+                write_load_place_self_address(w, &locals, to)?;
+                write_load_place_referee(w, &locals, left)?;
+                write_load_place_referee(w, &locals, right)?;
                 write!(w, "\t\t\tcall $concat_strings\n")?;
                 write!(w, "\t\t\ti32.store\n")?;
             }
             Instruction::Add { left, right, to } => {
-                write_load_place_self_address(w, to)?;
+                write_load_place_self_address(w, &locals, to)?;
                 // number on the left after type tag, number on the right after type tag
-                write_load_place_referee(w, left)?;
+                write_load_place_referee(w, &locals, left)?;
                 write!(w, "\t\t\ti32.const {}\n", mem::size_of::<i32>())?;
                 write!(w, "\t\t\ti32.add\n")?;
                 write!(w, "\t\t\ti32.load\n")?;
-                write_load_place_referee(w, right)?;
+                write_load_place_referee(w, &locals, right)?;
                 write!(w, "\t\t\ti32.const {}\n", mem::size_of::<i32>())?;
                 write!(w, "\t\t\ti32.add\n")?;
                 write!(w, "\t\t\ti32.load\n")?;
@@ -326,13 +317,13 @@ fn write_function<W: Write>(
                 write!(w, "\t\t\ti32.store")?;
             }
             Instruction::Sub { left, right, to } => {
-                write_load_place_self_address(w, to)?;
+                write_load_place_self_address(w, &locals, to)?;
                 // number on the left after type tag, number on the right after type tag
-                write_load_place_referee(w, left)?;
+                write_load_place_referee(w, &locals, left)?;
                 write!(w, "\t\t\ti32.const {}\n", mem::size_of::<i32>())?;
                 write!(w, "\t\t\ti32.add\n")?;
                 write!(w, "\t\t\ti32.load\n")?;
-                write_load_place_referee(w, right)?;
+                write_load_place_referee(w, &locals, right)?;
                 write!(w, "\t\t\ti32.const {}\n", mem::size_of::<i32>())?;
                 write!(w, "\t\t\ti32.add\n")?;
                 write!(w, "\t\t\ti32.load\n")?;
@@ -343,13 +334,13 @@ fn write_function<W: Write>(
                 write!(w, "\t\t\ti32.store\n")?;
             }
             Instruction::Mul { left, right, to } => {
-                write_load_place_self_address(w, to)?;
+                write_load_place_self_address(w, &locals, to)?;
                 // number on the left after type tag, number on the right after type tag
-                write_load_place_referee(w, left)?;
+                write_load_place_referee(w, &locals, left)?;
                 write!(w, "\t\t\ti32.const {}\n", mem::size_of::<i32>())?;
                 write!(w, "\t\t\ti32.add\n")?;
                 write!(w, "\t\t\ti32.load\n")?;
-                write_load_place_referee(w, right)?;
+                write_load_place_referee(w, &locals, right)?;
                 write!(w, "\t\t\ti32.const {}\n", mem::size_of::<i32>())?;
                 write!(w, "\t\t\ti32.add\n")?;
                 write!(w, "\t\t\ti32.load\n")?;
@@ -360,13 +351,13 @@ fn write_function<W: Write>(
                 write!(w, "\t\t\ti32.store\n")?;
             }
             Instruction::Div { left, right, to } => {
-                write_load_place_self_address(w, to)?;
+                write_load_place_self_address(w, &locals, to)?;
                 // number on the left after type tag, number on the right after type tag
-                write_load_place_referee(w, left)?;
+                write_load_place_referee(w, &locals, left)?;
                 write!(w, "\t\t\ti32.const {}\n", mem::size_of::<i32>())?;
                 write!(w, "\t\t\ti32.add\n")?;
                 write!(w, "\t\t\ti32.load\n")?;
-                write_load_place_referee(w, right)?;
+                write_load_place_referee(w, &locals, right)?;
                 write!(w, "\t\t\ti32.const {}\n", mem::size_of::<i32>())?;
                 write!(w, "\t\t\ti32.add\n")?;
                 write!(w, "\t\t\ti32.load\n")?;
@@ -377,7 +368,7 @@ fn write_function<W: Write>(
                 write!(w, "\t\t\ti32.store\n")?;
             }
             Instruction::Eq { left, right, to } => {
-                write_load_place_self_address(w, to)?;
+                write_load_place_self_address(w, &locals, to)?;
                 // true value is address of T, false value is address of nil
                 write!(
                     w,
@@ -390,11 +381,11 @@ fn write_function<W: Write>(
                     static_data.nil_data().offset()
                 )?;
                 // number on the left after type tag, number on the right after type tag
-                write_load_place_referee(w, left)?;
+                write_load_place_referee(w, &locals, left)?;
                 write!(w, "\t\t\ti32.const {}\n", mem::size_of::<i32>())?;
                 write!(w, "\t\t\ti32.add\n")?;
                 write!(w, "\t\t\ti32.load\n")?;
-                write_load_place_referee(w, right)?;
+                write_load_place_referee(w, &locals, right)?;
                 write!(w, "\t\t\ti32.const {}\n", mem::size_of::<i32>())?;
                 write!(w, "\t\t\ti32.add\n")?;
                 write!(w, "\t\t\ti32.load\n")?;
@@ -404,7 +395,7 @@ fn write_function<W: Write>(
                 write!(w, "\t\t\ti32.store\n")?;
             }
             Instruction::Ne { left, right, to } => {
-                write_load_place_self_address(w, to)?;
+                write_load_place_self_address(w, &locals, to)?;
                 // true value is address of T, false value is address of nil
                 write!(
                     w,
@@ -417,11 +408,11 @@ fn write_function<W: Write>(
                     static_data.nil_data().offset()
                 )?;
                 // number on the left after type tag, number on the right after type tag
-                write_load_place_referee(w, left)?;
+                write_load_place_referee(w, &locals, left)?;
                 write!(w, "\t\t\ti32.const {}\n", mem::size_of::<i32>())?;
                 write!(w, "\t\t\ti32.add\n")?;
                 write!(w, "\t\t\ti32.load\n")?;
-                write_load_place_referee(w, right)?;
+                write_load_place_referee(w, &locals, right)?;
                 write!(w, "\t\t\ti32.const {}\n", mem::size_of::<i32>())?;
                 write!(w, "\t\t\ti32.add\n")?;
                 write!(w, "\t\t\ti32.load\n")?;
@@ -431,7 +422,7 @@ fn write_function<W: Write>(
                 write!(w, "\t\t\ti32.store\n")?;
             }
             Instruction::Lt { left, right, to } => {
-                write_load_place_self_address(w, to)?;
+                write_load_place_self_address(w, &locals, to)?;
                 // true value is address of T, false value is address of nil
                 write!(
                     w,
@@ -444,11 +435,11 @@ fn write_function<W: Write>(
                     static_data.nil_data().offset()
                 )?;
                 // number on the left after type tag, number on the right after type tag
-                write_load_place_referee(w, left)?;
+                write_load_place_referee(w, &locals, left)?;
                 write!(w, "\t\t\ti32.const {}\n", mem::size_of::<i32>())?;
                 write!(w, "\t\t\ti32.add\n")?;
                 write!(w, "\t\t\ti32.load\n")?;
-                write_load_place_referee(w, right)?;
+                write_load_place_referee(w, &locals, right)?;
                 write!(w, "\t\t\ti32.const {}\n", mem::size_of::<i32>())?;
                 write!(w, "\t\t\ti32.add\n")?;
                 write!(w, "\t\t\ti32.load\n")?;
@@ -458,7 +449,7 @@ fn write_function<W: Write>(
                 write!(w, "\t\t\ti32.store\n")?;
             }
             Instruction::Gt { left, right, to } => {
-                write_load_place_self_address(w, to)?;
+                write_load_place_self_address(w, &locals, to)?;
                 // true value is address of T, false value is address of nil
                 write!(
                     w,
@@ -471,11 +462,11 @@ fn write_function<W: Write>(
                     static_data.nil_data().offset()
                 )?;
                 // number on the left after type tag, number on the right after type tag
-                write_load_place_referee(w, left)?;
+                write_load_place_referee(w, &locals, left)?;
                 write!(w, "\t\t\ti32.const {}\n", mem::size_of::<i32>())?;
                 write!(w, "\t\t\ti32.add\n")?;
                 write!(w, "\t\t\ti32.load\n")?;
-                write_load_place_referee(w, right)?;
+                write_load_place_referee(w, &locals, right)?;
                 write!(w, "\t\t\ti32.const {}\n", mem::size_of::<i32>())?;
                 write!(w, "\t\t\ti32.add\n")?;
                 write!(w, "\t\t\ti32.load\n")?;
@@ -485,7 +476,7 @@ fn write_function<W: Write>(
                 write!(w, "\t\t\ti32.store\n")?;
             }
             Instruction::Lte { left, right, to } => {
-                write_load_place_self_address(w, to)?;
+                write_load_place_self_address(w, &locals, to)?;
                 // true value is address of T, false value is address of nil
                 write!(
                     w,
@@ -498,11 +489,11 @@ fn write_function<W: Write>(
                     static_data.nil_data().offset()
                 )?;
                 // number on the left after type tag, number on the right after type tag
-                write_load_place_referee(w, left)?;
+                write_load_place_referee(w, &locals, left)?;
                 write!(w, "\t\t\ti32.const {}\n", mem::size_of::<i32>())?;
                 write!(w, "\t\t\ti32.add\n")?;
                 write!(w, "\t\t\ti32.load\n")?;
-                write_load_place_referee(w, right)?;
+                write_load_place_referee(w, &locals, right)?;
                 write!(w, "\t\t\ti32.const {}\n", mem::size_of::<i32>())?;
                 write!(w, "\t\t\ti32.add\n")?;
                 write!(w, "\t\t\ti32.load\n")?;
@@ -512,7 +503,7 @@ fn write_function<W: Write>(
                 write!(w, "\t\t\ti32.store\n")?;
             }
             Instruction::Gte { left, right, to } => {
-                write_load_place_self_address(w, to)?;
+                write_load_place_self_address(w, &locals, to)?;
                 // true value is address of T, false value is address of nil
                 write!(
                     w,
@@ -525,11 +516,11 @@ fn write_function<W: Write>(
                     static_data.nil_data().offset()
                 )?;
                 // number on the left after type tag, number on the right after type tag
-                write_load_place_referee(w, left)?;
+                write_load_place_referee(w, &locals, left)?;
                 write!(w, "\t\t\ti32.const {}\n", mem::size_of::<i32>())?;
                 write!(w, "\t\t\ti32.add\n")?;
                 write!(w, "\t\t\ti32.load\n")?;
-                write_load_place_referee(w, right)?;
+                write_load_place_referee(w, &locals, right)?;
                 write!(w, "\t\t\ti32.const {}\n", mem::size_of::<i32>())?;
                 write!(w, "\t\t\ti32.add\n")?;
                 write!(w, "\t\t\ti32.load\n")?;
@@ -552,13 +543,13 @@ fn write_function<W: Write>(
                 block_up,
                 if_not_nil,
             } => {
-                write_load_place_referee(w, if_not_nil)?;
+                write_load_place_referee(w, &locals, if_not_nil)?;
                 let target_block =
                     block_stack[block_stack.len() - (block_up as usize)];
                 write!(w, "\t\t\tbr_if $block_{}_end\n", target_block)?;
             }
             Instruction::BreakIfNil { if_nil, block_up } => {
-                write_load_place_referee(w, if_nil)?;
+                write_load_place_referee(w, &locals, if_nil)?;
                 write!(
                     w,
                     "\t\t\ti32.const {}\n",
@@ -573,7 +564,7 @@ fn write_function<W: Write>(
                 block_up,
                 if_not_nil,
             } => {
-                write_load_place_referee(w, if_not_nil)?;
+                write_load_place_referee(w, &locals, if_not_nil)?;
                 let target_block =
                     block_stack[block_stack.len() - (block_up as usize)];
                 write!(w, "\t\t\tbr_if $block_{}_start\n", target_block)?;
@@ -592,10 +583,10 @@ fn write_function<W: Write>(
                 block_stack.pop();
             }
             Instruction::NilIfZero { check, to } => {
-                write_load_place_self_address(w, to)?;
+                write_load_place_self_address(w, &locals, to)?;
 
                 // load number address as first alternative
-                write_load_place_referee(w, check)?;
+                write_load_place_referee(w, &locals, check)?;
 
                 // and as the alternative load address of nil
                 write!(
@@ -605,7 +596,7 @@ fn write_function<W: Write>(
                 )?;
 
                 // load the number value as the test
-                write_load_place_referee(w, check)?;
+                write_load_place_referee(w, &locals, check)?;
                 write!(w, "\t\t\ti32.const {}\n", mem::size_of::<i32>())?;
                 write!(w, "\t\t\ti32.add\n")?;
                 write!(w, "\t\t\ti32.load\n")?;
@@ -623,16 +614,9 @@ fn write_function<W: Write>(
     // function epilogue
     write!(w, "\t\t;; start of function epilogue\n")?;
     if let Some(ref locals) = locals {
-        match locals.mode() {
-            AddressingMode::Global => unreachable!(),
-            // deallocate stack frame if locals are used
-            AddressingMode::Local => {
-                write!(w, "\t\ti32.const {}\n", -locals.len())?;
-                write!(w, "\t\tcall $inc_stack_bottom\n")?;
-            }
-            AddressingMode::Persistent => {
-                // nothing to deallocate in terms of places for persistent storage, they must be preserved
-            }
+        if let LocalStrategy::Stack = locals.strategy() {
+            write!(w, "\t\ti32.const {}\n", -locals.len())?;
+            write!(w, "\t\tcall $inc_stack_bottom\n")?;
         }
         write!(w, "\t\tlocal.get $retval\n")?;
     }
@@ -645,13 +629,14 @@ fn write_function<W: Write>(
 /// Loads the address of a place itself, so that it can be overwritten.
 fn write_load_place_self_address<W: Write>(
     w: &mut W,
+    local_info: &Option<LocalPlacesInfo>,
     from: PlaceAddress,
 ) -> io::Result<()> {
     let offset = from.offset() as usize;
 
-    match from.mode() {
+    match (from.mode(), local_info.as_ref().unwrap().strategy()) {
         // local variables are below the stack bottom that gets bumped on entry
-        AddressingMode::Local => {
+        (AddressingMode::Local, LocalStrategy::Stack) => {
             write!(w, "\t\t\tglobal.get $stack_bottom\n")?;
             write!(
                 w,
@@ -661,12 +646,12 @@ fn write_load_place_self_address<W: Write>(
             write!(w, "\t\t\ti32.sub\n")
         }
         // persistent are addressed from the beginning, so no extra needed
-        AddressingMode::Persistent => {
+        (AddressingMode::Local, LocalStrategy::Heap) => {
             write!(w, "\t\t\tlocal.get $persistent_bottom\n")?;
             write!(w, "\t\t\ti32.const {}\n", offset)?;
             write!(w, "\t\t\ti32.add\n")
         }
-        AddressingMode::Global => {
+        (AddressingMode::Global, _) => {
             write!(w, "\t\t\ti32.const {}\n", offset)
         }
     }
@@ -675,9 +660,10 @@ fn write_load_place_self_address<W: Write>(
 /// Loads the address that a place points to
 fn write_load_place_referee<W: Write>(
     w: &mut W,
+    local_info: &Option<LocalPlacesInfo>,
     from: PlaceAddress,
 ) -> io::Result<()> {
-    write_load_place_self_address(w, from)?;
+    write_load_place_self_address(w, local_info, from)?;
     write!(w, "\t\t\ti32.load\n")
 }
 

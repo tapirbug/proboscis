@@ -12,9 +12,6 @@ pub enum AddressingMode {
     /// accessing a place relative to the beginning of memory, used for global
     /// variables
     Global,
-    /// addressing in persistent storage that is preserved after function
-    /// returns
-    Persistent,
 }
 
 impl PlaceAddress {
@@ -30,13 +27,6 @@ impl PlaceAddress {
     }
 
     pub fn new_local(local_place_byte_offset: i32) -> Self {
-        Self {
-            mode: AddressingMode::Local,
-            offset: local_place_byte_offset,
-        }
-    }
-
-    pub fn new_persistent(local_place_byte_offset: i32) -> Self {
         Self {
             mode: AddressingMode::Local,
             offset: local_place_byte_offset,

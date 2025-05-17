@@ -1,6 +1,6 @@
 use std::{borrow::Cow, collections::HashMap, fmt, mem};
 
-use address::PlaceGenerator;
+use address::LocalPlaceGenerator;
 use lambdas::{contains_form_lambdas, contains_function_lambdas};
 use scope::VariableScope;
 
@@ -224,15 +224,13 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         self.variable_scope.enter_scope();
         let func_address = self.function_addresses
             [definition.name().fragment(definition.source()).source()];
-        let mut locals = if contains_function_lambdas(definition) {
+        let mut locals = LocalPlaceGenerator::new();
+        if contains_function_lambdas(definition) {
             self.functions.add_attribute(
                 func_address,
                 FunctionAttribute::CreatesPersistentPlaces,
             );
-            PlaceGenerator::persistent()
-        } else {
-            PlaceGenerator::local()
-        };
+        }
         self.functions.implement_function(func_address);
         for arg in definition.positional_args().iter() {
             let ident = arg.fragment(definition.source()).source();
@@ -285,15 +283,13 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
             .iter()
             .flat_map(|r| r.code())
             .any(contains_form_lambdas);
-        let mut locals = if contains_toplevel_lambdas {
+        let mut locals = LocalPlaceGenerator::new();
+        if contains_toplevel_lambdas {
             self.functions.add_attribute(
                 main_addr,
                 FunctionAttribute::CreatesPersistentPlaces,
             );
-            PlaceGenerator::persistent()
-        } else {
-            PlaceGenerator::local()
-        };
+        }
 
         let mut last_place = None;
         for code in self.analysis.root_code() {
@@ -317,7 +313,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         source: Source<'s>,
         code: &Form<'s, 't>,
         addr: StaticFunctionAddress,
-        locals: &mut PlaceGenerator,
+        locals: &mut LocalPlaceGenerator,
     ) -> Result<PlaceAddress, IrGenError<'s, 't>> {
         Ok(match code {
             // names refer directly to the place they are bound to, so they can be written
@@ -391,7 +387,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         source: Source<'s>,
         form: &IfForm<'s, 't>,
         addr: StaticFunctionAddress,
-        locals: &mut PlaceGenerator,
+        locals: &mut LocalPlaceGenerator,
     ) -> Result<PlaceAddress, IrGenError<'s, 't>> {
         // generate something like: result = test(); a:{ b:{ if result != nil { break b; } … else code …  break a } … then code … }
 
@@ -434,7 +430,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         source: Source<'s>,
         form: &AndForm<'s, 't>,
         addr: StaticFunctionAddress,
-        locals: &mut PlaceGenerator,
+        locals: &mut LocalPlaceGenerator,
     ) -> Result<PlaceAddress, IrGenError<'s, 't>> {
         match form.forms().len() {
             0 => Ok(self.t_place),
@@ -469,7 +465,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         source: Source<'s>,
         form: &OrForm<'s, 't>,
         addr: StaticFunctionAddress,
-        locals: &mut PlaceGenerator,
+        locals: &mut LocalPlaceGenerator,
     ) -> Result<PlaceAddress, IrGenError<'s, 't>> {
         match form.forms().len() {
             0 => Ok(self.nil_place),
@@ -504,7 +500,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         source: Source<'s>,
         form: &LetForm<'s, 't>,
         addr: StaticFunctionAddress,
-        locals: &mut PlaceGenerator,
+        locals: &mut LocalPlaceGenerator,
     ) -> Result<PlaceAddress, IrGenError<'s, 't>> {
         let mut places_to_add_simultaneously =
             Vec::with_capacity(form.bindings().len());
@@ -534,7 +530,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         source: Source<'s>,
         call: &Call<'s, 't>,
         addr: StaticFunctionAddress,
-        locals: &mut PlaceGenerator,
+        locals: &mut LocalPlaceGenerator,
     ) -> Result<PlaceAddress, IrGenError<'s, 't>> {
         let args = call.args();
         let mut evaluated_arg_places: Vec<PlaceAddress> =
@@ -573,7 +569,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         source: Source<'s>,
         apply: &Apply<'s, 't>,
         addr: StaticFunctionAddress,
-        locals: &mut PlaceGenerator,
+        locals: &mut LocalPlaceGenerator,
     ) -> Result<PlaceAddress, IrGenError<'s, 't>> {
         let arg_list =
             self.generate_code(source, apply.args(), addr, locals)?;
@@ -616,7 +612,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         source: Source<'s>,
         funcall: &Funcall<'s, 't>,
         addr: StaticFunctionAddress,
-        locals: &mut PlaceGenerator,
+        locals: &mut LocalPlaceGenerator,
     ) -> Result<PlaceAddress, IrGenError<'s, 't>> {
         let args = funcall.args();
         let mut evaluated_arg_places: Vec<PlaceAddress> =
@@ -675,7 +671,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         source: Source<'s>,
         lambda: &Lambda<'s, 't>,
         parent_func_addr: StaticFunctionAddress,
-        locals: &mut PlaceGenerator, // we share the locals but not the function address
+        locals: &mut LocalPlaceGenerator, // we share the locals but not the function address
     ) -> Result<PlaceAddress, IrGenError<'s, 't>> {
         let parent_func_lambda_place = locals.next();
         let lambda_fun_name = format!(

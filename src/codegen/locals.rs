@@ -1,25 +1,45 @@
 use std::mem;
 
 use crate::ir::{
-    AddressingMode, Function, Instruction, PlaceAddress, Program,
+    Function, FunctionAttribute, Instruction, PlaceAddress, Program,
 };
 
+#[derive(Copy, Clone)]
+pub enum LocalStrategy {
+    /// Store locals on the heap and preserve them after returning.
+    Heap,
+    /// Store locals on the stack and don't preserve them.
+    Stack,
+}
+
+impl LocalStrategy {
+    fn choose(function: &Function) -> LocalStrategy {
+        let attributes = function.attributes();
+        if attributes.contains(&FunctionAttribute::AcceptsPersistentPlaces)
+            || attributes.contains(&FunctionAttribute::CreatesPersistentPlaces)
+        {
+            LocalStrategy::Heap
+        } else {
+            LocalStrategy::Stack
+        }
+    }
+}
+
 pub struct LocalPlacesInfo {
-    mode: AddressingMode,
+    strategy: LocalStrategy,
     len: i32,
 }
 
 impl LocalPlacesInfo {
-    /// The mode used by local variables.
-    pub fn mode(&self) -> AddressingMode {
-        self.mode
-    }
-
     /// The length of local space storage in bytes.
     ///
     /// The length is never 0.
     pub fn len(&self) -> i32 {
         self.len
+    }
+
+    pub fn strategy(&self) -> LocalStrategy {
+        self.strategy
     }
 }
 
@@ -29,19 +49,20 @@ impl LocalPlacesInfo {
         for &inst in function.instructions() {
             consider_instruction(&mut acc, inst, program);
         }
-        acc.finish()
+        acc.finish().map(|len| LocalPlacesInfo {
+            strategy: LocalStrategy::choose(function),
+            len,
+        })
     }
 }
 
 struct LocalSpaceAccumulator {
-    mode: Option<AddressingMode>,
     max_offset: i32,
 }
 
 impl LocalSpaceAccumulator {
     fn new() -> Self {
         Self {
-            mode: None,
             // start with minus one as the max offset, so if it's empty
             // the end result will be 0
             max_offset: -(mem::size_of::<i32>() as i32),
@@ -49,27 +70,12 @@ impl LocalSpaceAccumulator {
     }
 
     fn must_contain(&mut self, addr: PlaceAddress) {
-        match addr.mode() {
-            AddressingMode::Global => {} // don't care about globals for counting locals / persistents
-            AddressingMode::Local | AddressingMode::Persistent => {
-                self.max_offset = self.max_offset.max(addr.offset());
-                self.mode = match self.mode {
-                    None => Some(addr.mode()),
-                    Some(prev_mode) if prev_mode != addr.mode() => {
-                        panic!("cannot mix persistent and local for now")
-                    }
-                    Some(same) => Some(same),
-                };
-            }
-        }
+        self.max_offset = self.max_offset.max(addr.offset());
     }
 
-    fn finish(self) -> Option<LocalPlacesInfo> {
-        self.mode.map(|mode| {
-            // include space for the last place
-            let bytes = self.max_offset + (mem::size_of::<i32>() as i32);
-            LocalPlacesInfo { mode, len: bytes }
-        })
+    fn finish(self) -> Option<i32> {
+        (self.max_offset >= 0)
+            .then(|| self.max_offset + (mem::size_of::<i32>() as i32))
     }
 }
 
