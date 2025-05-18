@@ -1,16 +1,17 @@
-use std::{borrow::Cow, collections::HashMap, fmt};
+use std::{collections::HashMap, fmt};
 
 use address::LocalPlaceGenerator;
 use lambdas::{contains_form_lambdas, contains_function_lambdas};
 use scope::VariableScope;
+use statics::{StaticDataError, StaticsGen};
 
 use crate::{
     analysis::FunctionDefinition,
     ir::{
-        DataAddress, FunctionAttribute, FunctionsBuilder, PlaceAddress,
-        Program, StaticDataBuilder, StaticFunctionAddress,
+        FunctionAttribute, FunctionsBuilder, PlaceAddress,
+        Program, StaticFunctionAddress,
     },
-    parse::{AstNode, Atom, TokenKind},
+    parse::{Atom, TokenKind},
     source::Source,
 };
 
@@ -20,50 +21,34 @@ use super::{
     form::{
         AndForm, Apply, Call, Form, Funcall, IfForm, Lambda, LetForm, OrForm,
     },
-    strings::decode_string,
 };
 
 mod address;
 mod lambdas;
 mod scope;
+mod statics;
 
 pub struct IrGen<'a, 's, 't> {
-    // TODO make this work without a single source
-    static_data: StaticDataBuilder,
-    functions: FunctionsBuilder,
-    nil_place: PlaceAddress,
-    t_place: PlaceAddress,
-    function_addresses: HashMap<String, StaticFunctionAddress>,
-    global_string_addresses: HashMap<Cow<'s, str>, DataAddress>,
-    /// Identifiers for static data, e.g. 'string for concatenate
-    global_identifier_addresses: HashMap<&'s str, DataAddress>,
-    global_number_addresses: HashMap<i32, DataAddress>,
-    global_function_addresses: HashMap<&'s str, DataAddress>,
-    variable_scope: VariableScope<'s>,
     analysis: &'a SemanticAnalysis<'s, 't>,
+    static_data: StaticsGen<'s>,
+    functions: FunctionsBuilder,
+    function_addresses: HashMap<String, StaticFunctionAddress>,
+    variable_scope: VariableScope<'s>,
 }
 
 impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
     pub fn new(analysis: &'a SemanticAnalysis<'s, 't>) -> Self {
-        let mut static_data = StaticDataBuilder::new();
+        let static_data = StaticsGen::new();
         let functions = FunctionsBuilder::new();
-        let nil_place = static_data.static_place(static_data.nil_data());
-        let t_place = static_data.static_place(static_data.t_data());
         let function_addresses: HashMap<String, StaticFunctionAddress> =
             HashMap::<String, StaticFunctionAddress>::new();
         let mut global_variables = VariableScope::new();
-        global_variables.add_binding("nil", nil_place);
-        global_variables.add_binding("t", t_place);
+        global_variables.add_binding("nil", static_data.nil_place());
+        global_variables.add_binding("t", static_data.t_place());
         Self {
             static_data,
             functions,
-            nil_place,
-            t_place,
             function_addresses,
-            global_string_addresses: HashMap::new(),
-            global_identifier_addresses: HashMap::new(),
-            global_number_addresses: HashMap::new(),
-            global_function_addresses: HashMap::new(),
             variable_scope: global_variables,
             analysis,
         }
@@ -76,7 +61,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         generate_intrinsic_functions(
             &mut generator.functions,
             &mut generator.function_addresses,
-            generator.nil_place,
+            generator.static_data.nil_place(),
         );
         generator.generate_source_global_variables()?;
         generator.generate_source_functions()?;
@@ -84,92 +69,6 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
             generator.static_data.build(),
             generator.functions.build(),
         ))
-    }
-
-    /// Gets data addresses for static data, reusing existing data if possible.
-    pub fn static_data_for_node(
-        &mut self,
-        source: Source<'s>,
-        value: &'t AstNode<'s>,
-    ) -> Result<DataAddress, IrGenError<'s, 't>> {
-        Ok(match value {
-            AstNode::Atom(atom) => {
-                match atom.token().kind() {
-                    TokenKind::Comment
-                    | TokenKind::Ws
-                    | TokenKind::LeftParen
-                    | TokenKind::RightParen
-                    | TokenKind::Quote => unreachable!(),
-                    TokenKind::StringLit => {
-                        let decoded =
-                            decode_string(atom.fragment(source).source());
-                        let decoded2 = decoded.clone();
-                        *self
-                            .global_string_addresses
-                            .entry(decoded)
-                            .or_insert_with(|| {
-                                self.static_data
-                                    .static_string(decoded2.as_ref())
-                            })
-                    }
-                    TokenKind::IntLit => {
-                        let decoded = i32::from_str_radix(
-                            atom.fragment(source).source(),
-                            10,
-                        )
-                        .map_err(|_| {
-                            IrGenError::NumberParseError {
-                                atom,
-                                source: source,
-                            }
-                        })?;
-                        self.static_number(decoded)
-                    }
-                    TokenKind::FloatLit => todo!("floats are unimplemented"),
-                    // identifiers in an escaped context, here the #' will be included for functions
-                    TokenKind::FuncIdent => {
-                        let value = atom.fragment(source).source();
-                        *self
-                            .global_identifier_addresses
-                            .entry(value)
-                            .or_insert_with(|| {
-                                self.static_data.static_identifier(value)
-                            })
-                    }
-                    // variable identifiers are as-is in an escaped context
-                    TokenKind::Ident => {
-                        let value = atom.fragment(source).source();
-                        *self
-                            .global_identifier_addresses
-                            .entry(value)
-                            .or_insert_with(|| {
-                                self.static_data.static_identifier(value)
-                            })
-                    }
-                }
-            }
-            AstNode::List(l) => {
-                let mut successor = self.static_data.nil_data();
-                for predecessor in l.elements().iter().rev() {
-                    let predecessor =
-                        self.static_data_for_node(source, predecessor)?;
-                    successor = self
-                        .static_data
-                        .static_list_node(predecessor, successor);
-                }
-                successor
-            }
-            AstNode::Quoted(q) => {
-                self.static_data_for_node(source, q.quoted())?
-            }
-        })
-    }
-
-    fn static_number(&mut self, decoded: i32) -> DataAddress {
-        *self
-            .global_number_addresses
-            .entry(decoded)
-            .or_insert_with(|| self.static_data.static_number(decoded))
     }
 
     pub fn generate_source_global_variables(
@@ -184,7 +83,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
                 }
             })?;
             let data_address =
-                self.static_data_for_node(global.source(), value.node())?;
+                self.static_data.for_node(global.source(), value.node())?;
             let data_place = self.static_data.static_place(data_address);
             self.variable_scope.add_binding(name, data_place);
         }
@@ -249,7 +148,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         }
         self.functions
             .implement_function(func_address)
-            .add_return(last_place.unwrap_or_else(|| self.nil_place));
+            .add_return(last_place.unwrap_or_else(|| self.static_data.nil_place()));
         self.variable_scope.exit_scope();
         Ok(())
     }
@@ -294,7 +193,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         }
         self.functions
             .implement_function(main_addr)
-            .add_return(last_place.unwrap_or(self.nil_place));
+            .add_return(last_place.unwrap_or(self.static_data.nil_place()));
         Ok(())
     }
 
@@ -324,12 +223,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
                         source,
                         ident: name.ident(),
                     })?;
-                let static_func_address = *self
-                    .global_function_addresses
-                    .entry(value)
-                    .or_insert_with(|| {
-                        self.static_data.static_function(static_address)
-                    });
+                let static_func_address = self.static_data.static_function(static_address);
                 let place_address = locals.next();
                 self.functions
                     .implement_function(addr)
@@ -339,7 +233,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
             // numbers, strings and quoted stuff evaluate to a reference to static data stored in a local place
             Form::Constant(constant) => {
                 let data_address =
-                    self.static_data_for_node(source, constant.node())?;
+                    self.static_data.for_node(source, constant.node())?;
                 let place_address = locals.next();
                 self.functions
                     .implement_function(addr)
@@ -396,7 +290,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
             Some(else_form) => {
                 self.generate_code(source, else_form, addr, locals)?
             }
-            None => self.nil_place,
+            None => self.static_data.nil_place(),
         };
         self.functions
             .implement_function(addr)
@@ -423,7 +317,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         locals: &mut LocalPlaceGenerator,
     ) -> Result<PlaceAddress, IrGenError<'s, 't>> {
         match form.forms().len() {
-            0 => Ok(self.t_place),
+            0 => Ok(self.static_data.t_place()),
             1 => self.generate_code(source, &form.forms()[0], addr, locals),
             // short-circuiting makes sense for two or more forms
             _ => {
@@ -458,7 +352,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         locals: &mut LocalPlaceGenerator,
     ) -> Result<PlaceAddress, IrGenError<'s, 't>> {
         match form.forms().len() {
-            0 => Ok(self.nil_place),
+            0 => Ok(self.static_data.nil_place()),
             1 => self.generate_code(source, &form.forms()[0], addr, locals),
             // short-circuiting makes sense for two or more forms
             _ => {
@@ -510,7 +404,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
             last_result =
                 Some(self.generate_code(source, body, addr, locals)?);
         }
-        let last_result = last_result.unwrap_or(self.nil_place);
+        let last_result = last_result.unwrap_or(self.static_data.nil_place());
         self.variable_scope.exit_scope();
         Ok(last_result)
     }
@@ -700,7 +594,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         }
         self.functions
             .implement_function(lambda_func_addr)
-            .add_return(last_place.unwrap_or_else(|| self.nil_place));
+            .add_return(last_place.unwrap_or_else(|| self.static_data.nil_place()));
 
         self.variable_scope.exit_scope();
 
@@ -713,10 +607,6 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
 }
 
 pub enum IrGenError<'s, 't> {
-    NumberParseError {
-        source: Source<'s>,
-        atom: &'t Atom<'s>,
-    },
     NotInScope {
         source: Source<'s>,
         atom: &'t Atom<'s>,
@@ -733,19 +623,20 @@ pub enum IrGenError<'s, 't> {
         source: Source<'s>,
         ident: &'t Atom<'s>,
     },
+    StaticData {
+        error: StaticDataError<'s, 't>
+    },
+}
+
+impl<'s, 't> From<StaticDataError<'s, 't>> for IrGenError<'s, 't> {
+    fn from(value: StaticDataError<'s, 't>) -> Self {
+        Self::StaticData { error: value }
+    }
 }
 
 impl<'s, 't> fmt::Display for IrGenError<'s, 't> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            &IrGenError::NumberParseError { atom, source } => {
-                writeln!(
-                    f,
-                    "number cannot be parsed as a 32-bit signed integer `{}`:",
-                    atom.source_range().of(source).source()
-                )?;
-                writeln!(f, "{}", atom.fragment(source).source_context())
-            }
             &IrGenError::NotInScope { atom, source } => {
                 writeln!(
                     f,
@@ -781,6 +672,7 @@ impl<'s, 't> fmt::Display for IrGenError<'s, 't> {
                 )?;
                 writeln!(f, "{}", ident.fragment(source).source_context())
             }
+            IrGenError::StaticData { error } => write!(f, "{}", error)
         }
     }
 }
