@@ -1,7 +1,7 @@
 use std::{collections::HashMap, mem};
 
 use crate::ir::{
-    DataAddress, FunctionsBuilder, PlaceAddress, StaticDataBuilder,
+    FunctionsBuilder, PlaceAddress,
     StaticFunctionAddress,
 };
 
@@ -15,44 +15,34 @@ use crate::ir::{
 /// in LISP to offer functionality that more closely resembles Common LISP,
 /// e.g. `intrinsic:add2` is used internally by the `+` function, and user code
 /// should only use that function.
-pub fn generate_builtin_functions<'i>(
-    static_data: &'i mut StaticDataBuilder,
+pub fn generate_intrinsic_functions<'i>(
     functions: &'i mut FunctionsBuilder,
     function_addresses: &'i mut HashMap<String, StaticFunctionAddress>,
-    nil_address: DataAddress,
     nil_place: PlaceAddress,
 ) {
-    BuiltinGen::new(
-        static_data,
+    Intrinsics::new(
         functions,
         function_addresses,
-        nil_address,
         nil_place,
     )
     .generate_builtin_functions();
 }
 
-struct BuiltinGen<'i> {
-    static_data: &'i mut StaticDataBuilder,
+struct Intrinsics<'i> {
     functions: &'i mut FunctionsBuilder,
     function_addresses: &'i mut HashMap<String, StaticFunctionAddress>,
-    nil_address: DataAddress,
     nil_place: PlaceAddress,
 }
 
-impl<'i> BuiltinGen<'i> {
+impl<'i> Intrinsics<'i> {
     fn new(
-        static_data: &'i mut StaticDataBuilder,
         functions: &'i mut FunctionsBuilder,
         function_addresses: &'i mut HashMap<String, StaticFunctionAddress>,
-        nil_address: DataAddress,
         nil_place: PlaceAddress,
     ) -> Self {
         Self {
-            static_data,
             function_addresses,
             functions,
-            nil_address,
             nil_place,
         }
     }

@@ -1,5 +1,5 @@
 use super::{
-    lexer::{Lexer, LexerError},
+    lexer::LexerError,
     stream::TokenStream,
     token::Token,
 };
@@ -21,10 +21,6 @@ enum LookaheadEntry<'s> {
     /// results of calls to next_token()
     Used(Option<Result<Token<'s>, LexerError<'s>>>),
 }
-
-/*pub struct Lookahead<'b, 's, const N: usize> {
-    buf: &'b [LookaheadEntry<'s>; N]
-}*/
 
 impl<'s, I: TokenStream<'s>, const N: usize> LookaheadStream<'s, I, N> {
     pub fn new(inner: I) -> Self {
@@ -91,7 +87,7 @@ impl<'s, I: TokenStream<'s>, const N: usize> LookaheadStream<'s, I, N> {
         assert!(N >= 1);
         self.ensure_used(0);
         // remove the first entry and replace it with Unused, then let it bubble
-        // up by swapping every element with its left neighbour
+        // up by swapping every element with its left neighbor
         let head = mem::take(&mut self.buf[0]);
         for swap_right in 1..N {
             self.buf.swap(swap_right - 1, swap_right);
@@ -123,7 +119,7 @@ impl<'s> Default for LookaheadEntry<'s> {
 
 #[cfg(test)]
 mod test {
-    use crate::source::SourceSet;
+    use crate::{parse::lexer::Lexer, source::SourceSet};
 
     use super::*;
 

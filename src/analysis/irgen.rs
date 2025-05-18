@@ -16,7 +16,7 @@ use crate::{
 
 use super::{
     SemanticAnalysis,
-    builtin::generate_builtin_functions,
+    builtin::generate_intrinsic_functions,
     form::{
         AndForm, Apply, Call, Form, Funcall, IfForm, Lambda, LetForm, OrForm,
     },
@@ -73,7 +73,11 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         analysis: &'a SemanticAnalysis<'s, 't>,
     ) -> Result<Program, IrGenError<'s, 't>> {
         let mut generator = Self::new(analysis);
-        generator.generate_builtin_functions()?;
+        generate_intrinsic_functions(
+            &mut generator.functions,
+            &mut generator.function_addresses,
+            generator.nil_place,
+        );
         generator.generate_source_global_variables()?;
         generator.generate_source_functions()?;
         Ok(Program::new(
@@ -184,20 +188,6 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
             let data_place = self.static_data.static_place(data_address);
             self.variable_scope.add_binding(name, data_place);
         }
-        Ok(())
-    }
-
-    fn generate_builtin_functions(
-        &mut self,
-    ) -> Result<(), IrGenError<'s, 't>> {
-        let nil_address = self.static_data.nil_data();
-        generate_builtin_functions(
-            &mut self.static_data,
-            &mut self.functions,
-            &mut self.function_addresses,
-            nil_address,
-            self.nil_place,
-        );
         Ok(())
     }
 

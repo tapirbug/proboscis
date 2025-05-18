@@ -16,7 +16,6 @@ pub use datatype::{IrDataType, IrDataTypeTag};
 pub use func::{Function, FunctionAttribute, StaticFunctionAddress};
 pub use funcbuilder::FunctionsBuilder;
 pub use functable::FunctionTableIndex;
-pub use inmem::type_to_tag_bytes;
 pub use inst::{Instruction, InstructionBuilder};
 pub use place::{AddressingMode, PlaceAddress};
 pub use program::Program;

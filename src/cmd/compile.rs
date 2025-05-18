@@ -10,7 +10,7 @@ use crate::{
     codegen::{write_pirt, write_wat},
     ir::Program,
     parse::{AstSet, Parser},
-    source::{Source, SourceSet},
+    source::SourceSet,
 };
 
 use super::err::CommandResult;

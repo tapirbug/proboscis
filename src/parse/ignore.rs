@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use super::{stream::TokenStream, token::TokenKind};
 
 use crate::source::Source;

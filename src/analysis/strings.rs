@@ -28,4 +28,19 @@ pub fn decode_string(raw: &str) -> Cow<str> {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn escaped_quotes() {
+        let decoded = decode_string("\"\\\"Hey\\\" she said\"");
+        assert_eq!(decoded.as_ref(), "\"Hey\" she said");
+    }
+
+    #[test]
+    fn plain_string_borrowed() {
+        let decoded = decode_string("\"tapirs\"");
+        match decoded {
+            Cow::Owned(_) => panic!("unnecessary string copy"),
+            Cow::Borrowed(str) => assert_eq!(str, "tapirs")
+        };
+    }
 }

@@ -1,4 +1,4 @@
-use std::{fmt, marker::PhantomData, ptr};
+use std::{fmt, marker::PhantomData};
 
 use super::sourceset::Source;
 
