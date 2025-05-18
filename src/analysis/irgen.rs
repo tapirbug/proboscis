@@ -1,8 +1,9 @@
-use std::{collections::HashMap, fmt};
+use std::fmt;
 
 use address::LocalPlaceGenerator;
+use code::generate_intrinsic_functions;
 use lambdas::{contains_form_lambdas, contains_function_lambdas};
-use scope::VariableScope;
+use scope::{FunctionScope, VariableScope};
 use statics::{StaticDataError, StaticsGen};
 
 use crate::{
@@ -17,13 +18,13 @@ use crate::{
 
 use super::{
     SemanticAnalysis,
-    builtin::generate_intrinsic_functions,
     form::{
         AndForm, Apply, Call, Form, Funcall, IfForm, Lambda, LetForm, OrForm,
     },
 };
 
 mod address;
+mod code;
 mod lambdas;
 mod scope;
 mod statics;
@@ -32,7 +33,7 @@ pub struct IrGen<'a, 's, 't> {
     analysis: &'a SemanticAnalysis<'s, 't>,
     static_data: StaticsGen<'s>,
     functions: FunctionsBuilder,
-    function_addresses: HashMap<String, StaticFunctionAddress>,
+    function_scope: FunctionScope<'s>,
     variable_scope: VariableScope<'s>,
 }
 
@@ -40,15 +41,13 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
     pub fn new(analysis: &'a SemanticAnalysis<'s, 't>) -> Self {
         let static_data = StaticsGen::new();
         let functions = FunctionsBuilder::new();
-        let function_addresses: HashMap<String, StaticFunctionAddress> =
-            HashMap::<String, StaticFunctionAddress>::new();
         let mut global_variables = VariableScope::new();
         global_variables.add_binding("nil", static_data.nil_place());
         global_variables.add_binding("t", static_data.t_place());
         Self {
             static_data,
             functions,
-            function_addresses,
+            function_scope: FunctionScope::new(),
             variable_scope: global_variables,
             analysis,
         }
@@ -60,7 +59,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         let mut generator = Self::new(analysis);
         generate_intrinsic_functions(
             &mut generator.functions,
-            &mut generator.function_addresses,
+            &mut generator.function_scope,
             generator.static_data.nil_place(),
         );
         generator.generate_source_global_variables()?;
@@ -95,7 +94,7 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         for function in self.analysis.function_definitions() {
             let name = function.name().fragment(function.source()).source();
             let address = self.functions.add_exported_function(name);
-            self.function_addresses.insert(name.into(), address);
+            self.function_scope.add_binding(name.into(), address);
         }
         // then generate the actual code for named functions
         for function in self.analysis.function_definitions() {
@@ -111,8 +110,10 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
         definition: &'t FunctionDefinition<'s, 't>,
     ) -> Result<(), IrGenError<'s, 't>> {
         self.variable_scope.enter_scope();
-        let func_address = self.function_addresses
-            [definition.name().fragment(definition.source()).source()];
+        let func_address = self.function_scope
+            .resolve(definition.name().fragment(definition.source()).source())
+            .unwrap() // can unwrap, we just created it
+            ;
         let mut locals = LocalPlaceGenerator::new();
         if contains_function_lambdas(definition) {
             self.functions.add_attribute(
@@ -216,10 +217,10 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
             Form::FunctionName(name) => {
                 // functions don't really have a scope here, but should probably consider stuff like flet in the future
                 let value = name.as_str();
-                let static_address = *self
-                    .function_addresses
-                    .get(value)
-                    .ok_or_else(|| IrGenError::FunctionNotFound {
+                let static_address = self
+                    .function_scope
+                    .resolve(value)
+                    .map_err(|_| IrGenError::FunctionNotFound {
                         source,
                         ident: name.ident(),
                     })?;
@@ -436,10 +437,9 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
 
         let func_ident = call.function();
         let func_address = self
-            .function_addresses
-            .get(func_ident.fragment(source).source())
-            .cloned()
-            .ok_or_else(|| IrGenError::FunctionNotFound {
+            .function_scope
+            .resolve(func_ident.fragment(source).source())
+            .map_err(|_| IrGenError::FunctionNotFound {
                 ident: func_ident,
                 source,
             })?;
@@ -465,10 +465,9 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
             let func_name_str =
                 func_name.fragment(source).source()[2..].trim();
             let func_address = self
-                .function_addresses
-                .get(func_name_str)
-                .cloned()
-                .ok_or_else(|| IrGenError::FunctionNotFound {
+                .function_scope
+                .resolve(func_name_str)
+                .map_err(|_| IrGenError::FunctionNotFound {
                     ident: func_name,
                     source,
                 })?;
@@ -523,10 +522,9 @@ impl<'a: 't, 's, 't> IrGen<'a, 's, 't> {
             let func_name_str =
                 func_name.fragment(source).source()[2..].trim();
             let func_address = self
-                .function_addresses
-                .get(func_name_str)
-                .cloned()
-                .ok_or_else(|| IrGenError::FunctionNotFound {
+                .function_scope
+                .resolve(func_name_str)
+                .map_err(|_| IrGenError::FunctionNotFound {
                     ident: func_name,
                     source,
                 })?;

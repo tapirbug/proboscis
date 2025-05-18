@@ -1,6 +1,6 @@
-use std::{collections::HashMap, mem};
+use std::mem;
 
-use crate::ir::{FunctionsBuilder, PlaceAddress, StaticFunctionAddress};
+use crate::{analysis::irgen::scope::FunctionScope, ir::{FunctionsBuilder, PlaceAddress}};
 
 /// Generates some builtin function that serve as a basis for other runtime
 /// functions implemented in LISP.
@@ -12,29 +12,29 @@ use crate::ir::{FunctionsBuilder, PlaceAddress, StaticFunctionAddress};
 /// in LISP to offer functionality that more closely resembles Common LISP,
 /// e.g. `intrinsic:add2` is used internally by the `+` function, and user code
 /// should only use that function.
-pub fn generate_intrinsic_functions<'i>(
+pub fn generate_intrinsic_functions<'i, 's>(
     functions: &'i mut FunctionsBuilder,
-    function_addresses: &'i mut HashMap<String, StaticFunctionAddress>,
+    function_scope: &'i mut FunctionScope<'s>,
     nil_place: PlaceAddress,
 ) {
-    Intrinsics::new(functions, function_addresses, nil_place)
+    Intrinsics::new(functions, function_scope, nil_place)
         .generate_builtin_functions();
 }
 
-struct Intrinsics<'i> {
+struct Intrinsics<'i, 's> {
     functions: &'i mut FunctionsBuilder,
-    function_addresses: &'i mut HashMap<String, StaticFunctionAddress>,
+    function_scope: &'i mut FunctionScope<'s>,
     nil_place: PlaceAddress,
 }
 
-impl<'i> Intrinsics<'i> {
+impl<'i, 's> Intrinsics<'i, 's> {
     fn new(
         functions: &'i mut FunctionsBuilder,
-        function_addresses: &'i mut HashMap<String, StaticFunctionAddress>,
+        function_scope: &'i mut FunctionScope<'s>,
         nil_place: PlaceAddress,
     ) -> Self {
         Self {
-            function_addresses,
+            function_scope,
             functions,
             nil_place,
         }
@@ -67,8 +67,7 @@ impl<'i> Intrinsics<'i> {
     fn generate_princ(&mut self) {
         let name = "intrinsic:princ";
         let format_addr = self.functions.add_private_function(name);
-        self.function_addresses
-            .insert(name.to_string(), format_addr);
+        self.function_scope.add_binding(name, format_addr);
         let working_place = PlaceAddress::new_local(0);
         self.functions
             .implement_function(format_addr)
@@ -80,7 +79,7 @@ impl<'i> Intrinsics<'i> {
     fn generate_builtin_type_tag_of(&mut self) {
         let name = "intrinsic:type-tag-of";
         let addr = self.functions.add_private_function(name);
-        self.function_addresses.insert(name.to_string(), addr);
+        self.function_scope.add_binding(name, addr);
         let working_place = PlaceAddress::new_local(0);
         self.functions
             .implement_function(addr)
@@ -92,7 +91,7 @@ impl<'i> Intrinsics<'i> {
     fn generate_builtin_concat_string_like_2(&mut self) {
         let name = "intrinsic:concat-string-like-2";
         let addr = self.functions.add_private_function(name);
-        self.function_addresses.insert(name.to_string(), addr);
+        self.function_scope.add_binding(name, addr);
         let left_place = PlaceAddress::new_local(0);
         let right_place =
             PlaceAddress::new_local(mem::size_of::<i32>() as i32);
@@ -107,7 +106,7 @@ impl<'i> Intrinsics<'i> {
     fn generate_cons(&mut self) {
         let name = "intrinsic:cons";
         let addr = self.functions.add_private_function(name);
-        self.function_addresses.insert(name.to_string(), addr);
+        self.function_scope.add_binding(name, addr);
         let left_place = PlaceAddress::new_local(0);
         let right_place =
             PlaceAddress::new_local(mem::size_of::<i32>() as i32);
@@ -122,7 +121,7 @@ impl<'i> Intrinsics<'i> {
     fn generate_car(&mut self) {
         let name = "intrinsic:car";
         let addr = self.functions.add_private_function(name);
-        self.function_addresses.insert(name.to_string(), addr);
+        self.function_scope.add_binding(name, addr);
         let place = PlaceAddress::new_local(0);
         self.functions
             .implement_function(addr)
@@ -134,7 +133,7 @@ impl<'i> Intrinsics<'i> {
     fn generate_cdr(&mut self) {
         let name = "intrinsic:cdr";
         let addr = self.functions.add_private_function(name);
-        self.function_addresses.insert(name.to_string(), addr);
+        self.function_scope.add_binding(name, addr);
         let place = PlaceAddress::new_local(0);
         self.functions
             .implement_function(addr)
@@ -146,7 +145,7 @@ impl<'i> Intrinsics<'i> {
     fn generate_add2(&mut self) {
         let name = "intrinsic:add-2";
         let addr = self.functions.add_private_function(name);
-        self.function_addresses.insert(name.to_string(), addr);
+        self.function_scope.add_binding(name, addr);
         let left = PlaceAddress::new_local(0);
         let right = PlaceAddress::new_local(mem::size_of::<i32>() as i32);
         self.functions
@@ -160,7 +159,7 @@ impl<'i> Intrinsics<'i> {
     fn generate_sub2(&mut self) {
         let name = "intrinsic:sub-2";
         let addr = self.functions.add_private_function(name);
-        self.function_addresses.insert(name.to_string(), addr);
+        self.function_scope.add_binding(name, addr);
         let left = PlaceAddress::new_local(0);
         let right = PlaceAddress::new_local(mem::size_of::<i32>() as i32);
         self.functions
@@ -174,7 +173,7 @@ impl<'i> Intrinsics<'i> {
     fn generate_mul2(&mut self) {
         let name = "intrinsic:mul-2";
         let addr = self.functions.add_private_function(name);
-        self.function_addresses.insert(name.to_string(), addr);
+        self.function_scope.add_binding(name, addr);
         let left = PlaceAddress::new_local(0);
         let right = PlaceAddress::new_local(mem::size_of::<i32>() as i32);
         self.functions
@@ -188,7 +187,7 @@ impl<'i> Intrinsics<'i> {
     fn generate_div2(&mut self) {
         let name = "intrinsic:div-2";
         let addr = self.functions.add_private_function(name);
-        self.function_addresses.insert(name.to_string(), addr);
+        self.function_scope.add_binding(name, addr);
         let left = PlaceAddress::new_local(0);
         let right = PlaceAddress::new_local(mem::size_of::<i32>() as i32);
         self.functions
@@ -202,7 +201,7 @@ impl<'i> Intrinsics<'i> {
     fn generate_eq2(&mut self) {
         let name = "intrinsic:=-2";
         let addr = self.functions.add_private_function(name);
-        self.function_addresses.insert(name.to_string(), addr);
+        self.function_scope.add_binding(name, addr);
         let left = PlaceAddress::new_local(0);
         let right = PlaceAddress::new_local(mem::size_of::<i32>() as i32);
         self.functions
@@ -216,7 +215,7 @@ impl<'i> Intrinsics<'i> {
     fn generate_ne2(&mut self) {
         let name = "intrinsic:/=-2";
         let addr = self.functions.add_private_function(name);
-        self.function_addresses.insert(name.to_string(), addr);
+        self.function_scope.add_binding(name, addr);
         let left = PlaceAddress::new_local(0);
         let right = PlaceAddress::new_local(mem::size_of::<i32>() as i32);
         self.functions
@@ -230,7 +229,7 @@ impl<'i> Intrinsics<'i> {
     fn generate_lt2(&mut self) {
         let name = "intrinsic:<-2";
         let addr = self.functions.add_private_function(name);
-        self.function_addresses.insert(name.to_string(), addr);
+        self.function_scope.add_binding(name, addr);
         let left = PlaceAddress::new_local(0);
         let right = PlaceAddress::new_local(mem::size_of::<i32>() as i32);
         self.functions
@@ -244,7 +243,7 @@ impl<'i> Intrinsics<'i> {
     fn generate_gt2(&mut self) {
         let name = "intrinsic:>-2";
         let addr = self.functions.add_private_function(name);
-        self.function_addresses.insert(name.to_string(), addr);
+        self.function_scope.add_binding(name, addr);
         let left = PlaceAddress::new_local(0);
         let right = PlaceAddress::new_local(mem::size_of::<i32>() as i32);
         self.functions
@@ -258,7 +257,7 @@ impl<'i> Intrinsics<'i> {
     fn generate_lte2(&mut self) {
         let name = "intrinsic:<=-2";
         let addr = self.functions.add_private_function(name);
-        self.function_addresses.insert(name.to_string(), addr);
+        self.function_scope.add_binding(name, addr);
         let left = PlaceAddress::new_local(0);
         let right = PlaceAddress::new_local(mem::size_of::<i32>() as i32);
         self.functions
@@ -272,7 +271,7 @@ impl<'i> Intrinsics<'i> {
     fn generate_gte2(&mut self) {
         let name = "intrinsic:>=-2";
         let addr = self.functions.add_private_function(name);
-        self.function_addresses.insert(name.to_string(), addr);
+        self.function_scope.add_binding(name, addr);
         let left = PlaceAddress::new_local(0);
         let right = PlaceAddress::new_local(mem::size_of::<i32>() as i32);
         self.functions
@@ -286,7 +285,7 @@ impl<'i> Intrinsics<'i> {
     fn generate_nil_if_0(&mut self) {
         let name = "intrinsic:nil-if-0";
         let addr = self.functions.add_private_function(name);
-        self.function_addresses.insert(name.to_string(), addr);
+        self.function_scope.add_binding(name, addr);
         let place = PlaceAddress::new_local(0);
         self.functions
             .implement_function(addr)
@@ -298,7 +297,7 @@ impl<'i> Intrinsics<'i> {
     fn generate_panic(&mut self) {
         let name = "intrinsic:panic";
         let addr = self.functions.add_private_function(name);
-        self.function_addresses.insert(name.to_string(), addr);
+        self.function_scope.add_binding(name, addr);
         self.functions
             .implement_function(addr)
             .panic()
