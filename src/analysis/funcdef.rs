@@ -1,5 +1,6 @@
 use std::fmt;
 
+use crate::diagnostic::Diagnostic;
 use crate::parse::{AstNode, Atom, List, TokenKind};
 use crate::source::Source;
 
@@ -219,6 +220,12 @@ pub enum FunctionDefinitionError<'s, 't> {
 impl<'s, 't> From<FormError<'s, 't>> for FunctionDefinitionError<'s, 't> {
     fn from(value: FormError<'s, 't>) -> Self {
         Self::FormError(value)
+    }
+}
+
+impl<'s, 't> Diagnostic for FunctionDefinitionError<'s, 't> {
+    fn kind(&self) -> crate::diagnostic::DiagnosticKind {
+        crate::diagnostic::DiagnosticKind::Error
     }
 }
 

@@ -1,6 +1,7 @@
 use std::fmt;
 
 use crate::{
+    diagnostic::Diagnostic,
     parse::{AstNode, Atom, List, TokenKind},
     source::Source,
 };
@@ -792,6 +793,12 @@ pub enum FormError<'s, 't> {
         source: Source<'s>,
         atom: &'t Atom<'s>,
     },
+}
+
+impl<'s, 't> Diagnostic for FormError<'s, 't> {
+    fn kind(&self) -> crate::diagnostic::DiagnosticKind {
+        crate::diagnostic::DiagnosticKind::Error
+    }
 }
 
 impl<'s, 't> fmt::Display for FormError<'s, 't> {

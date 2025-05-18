@@ -1,9 +1,6 @@
 use std::{collections::HashMap, mem};
 
-use crate::ir::{
-    FunctionsBuilder, PlaceAddress,
-    StaticFunctionAddress,
-};
+use crate::ir::{FunctionsBuilder, PlaceAddress, StaticFunctionAddress};
 
 /// Generates some builtin function that serve as a basis for other runtime
 /// functions implemented in LISP.
@@ -20,12 +17,8 @@ pub fn generate_intrinsic_functions<'i>(
     function_addresses: &'i mut HashMap<String, StaticFunctionAddress>,
     nil_place: PlaceAddress,
 ) {
-    Intrinsics::new(
-        functions,
-        function_addresses,
-        nil_place,
-    )
-    .generate_builtin_functions();
+    Intrinsics::new(functions, function_addresses, nil_place)
+        .generate_builtin_functions();
 }
 
 struct Intrinsics<'i> {
@@ -306,6 +299,9 @@ impl<'i> Intrinsics<'i> {
         let name = "intrinsic:panic";
         let addr = self.functions.add_private_function(name);
         self.function_addresses.insert(name.to_string(), addr);
-        self.functions.implement_function(addr).panic().add_return(self.nil_place);
+        self.functions
+            .implement_function(addr)
+            .panic()
+            .add_return(self.nil_place);
     }
 }

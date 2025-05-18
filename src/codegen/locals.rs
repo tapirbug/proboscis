@@ -213,7 +213,7 @@ fn consider_instruction(
         Instruction::LoadTypeTag { of, to } => {
             locals.must_contain(of);
             locals.must_contain(to);
-        },
+        }
         Instruction::Panic => {}
     }
 }

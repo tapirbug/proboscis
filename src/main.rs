@@ -4,6 +4,7 @@ mod analysis;
 mod args;
 mod cmd;
 mod codegen;
+mod diagnostic;
 mod ir;
 mod parse;
 mod source;

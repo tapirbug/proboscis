@@ -40,7 +40,7 @@ mod test {
         let decoded = decode_string("\"tapirs\"");
         match decoded {
             Cow::Owned(_) => panic!("unnecessary string copy"),
-            Cow::Borrowed(str) => assert_eq!(str, "tapirs")
+            Cow::Borrowed(str) => assert_eq!(str, "tapirs"),
         };
     }
 }

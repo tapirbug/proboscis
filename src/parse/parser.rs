@@ -1,6 +1,9 @@
 use std::fmt;
 
-use crate::parse::{ast::Atom, token::TokenKind};
+use crate::{
+    diagnostic::{Diagnostic, DiagnosticKind},
+    parse::{ast::Atom, token::TokenKind},
+};
 
 use super::{
     ahead::LookaheadStream,
@@ -144,6 +147,12 @@ pub enum ParserErrorDetails<'s> {
 pub struct ParserError<'s> {
     source: Source<'s>,
     details: ParserErrorDetails<'s>,
+}
+
+impl<'s> Diagnostic for ParserError<'s> {
+    fn kind(&self) -> DiagnosticKind {
+        DiagnosticKind::Error
+    }
 }
 
 impl<'s> ParserError<'s> {

@@ -10,4 +10,4 @@ mod strings;
 pub use funcdef::{FunctionDefinition, FunctionDefinitionError};
 pub use globaldef::{GlobalDefinition, GlobalDefinitionError};
 pub use irgen::{IrGen, IrGenError};
-pub use semantic::{SemanticAnalysis, SemanticAnalysisError};
+pub use semantic::SemanticAnalysis;

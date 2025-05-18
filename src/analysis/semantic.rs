@@ -1,12 +1,6 @@
-use std::fmt;
+use crate::{diagnostic::Diagnostics, parse::AstSet, source::Source};
 
-use crate::{parse::AstSet, source::Source};
-
-use super::{
-    FunctionDefinition, FunctionDefinitionError, GlobalDefinition,
-    GlobalDefinitionError,
-    form::{Form, FormError},
-};
+use super::{FunctionDefinition, GlobalDefinition, form::Form};
 
 pub struct SemanticAnalysis<'s, 't> {
     // REVIEW could it be a problem that function definitions and root code are not ordered with respect to each other?
@@ -24,8 +18,9 @@ impl<'s, 't> SemanticAnalysis<'s, 't> {
     /// Semantically analyses the asts of a group of source files that form
     /// a unit.
     pub fn analyze(
+        diagnostics: &mut Diagnostics,
         asts: &'t AstSet<'s>,
-    ) -> Result<SemanticAnalysis<'s, 't>, SemanticAnalysisError<'s, 't>> {
+    ) -> SemanticAnalysis<'s, 't> {
         // TODO find constant numbers too
 
         let mut root_codes = vec![];
@@ -36,32 +31,40 @@ impl<'s, 't> SemanticAnalysis<'s, 't> {
             let mut root_code = vec![];
             for root_node in ast.iter() {
                 // try parsing root-level element as a function first
-                let def =
-                    FunctionDefinition::extract(ast.source(), root_node)?;
+                let def = FunctionDefinition::extract(ast.source(), root_node);
                 match def {
-                    Some(def) => {
+                    Ok(Some(def)) => {
                         function_definitions.push(def);
                         continue;
                     }
-                    None => {}
+                    Ok(None) => {}
+                    Err(ref error) => {
+                        // error in function definition, continue with other root elements and stop later
+                        diagnostics.report(error);
+                        continue;
+                    }
                 }
 
                 // then as a global
-                let def = GlobalDefinition::extract(ast.source(), root_node)?;
+                let def = GlobalDefinition::extract(ast.source(), root_node);
                 match def {
-                    Some(def) => {
+                    Ok(Some(def)) => {
                         global_definitions.push(def);
                         continue;
                     }
-                    None => {}
+                    Ok(None) => {}
+                    Err(ref error) => {
+                        diagnostics.report(error);
+                        continue;
+                    }
                 }
 
                 // all other cases are considered to be top-level code
-                root_code.push(
-                    Form::extract(ast.source(), root_node).map_err(|e| {
-                        SemanticAnalysisError::RootFormError(e)
-                    })?,
-                );
+                if let Some(next_root) =
+                    diagnostics.ok(Form::extract(ast.source(), root_node))
+                {
+                    root_code.push(next_root);
+                }
             }
             root_codes.push(RootCode {
                 source: ast.source(),
@@ -69,11 +72,11 @@ impl<'s, 't> SemanticAnalysis<'s, 't> {
             });
         }
 
-        Ok(SemanticAnalysis {
+        SemanticAnalysis {
             root_code: root_codes,
             function_definitions,
             global_definitions,
-        })
+        }
     }
 }
 
@@ -88,39 +91,6 @@ impl<'s, 't> SemanticAnalysis<'s, 't> {
 
     pub fn global_definitions(&self) -> &[GlobalDefinition<'s, 't>] {
         &self.global_definitions
-    }
-}
-
-#[derive(Debug)]
-pub enum SemanticAnalysisError<'s, 't> {
-    FunctionDefinition(FunctionDefinitionError<'s, 't>),
-    GlobalDefinition(GlobalDefinitionError<'s, 't>),
-    RootFormError(FormError<'s, 't>),
-}
-
-impl<'s, 't> From<FunctionDefinitionError<'s, 't>>
-    for SemanticAnalysisError<'s, 't>
-{
-    fn from(value: FunctionDefinitionError<'s, 't>) -> Self {
-        Self::FunctionDefinition(value)
-    }
-}
-
-impl<'s, 't> From<GlobalDefinitionError<'s, 't>>
-    for SemanticAnalysisError<'s, 't>
-{
-    fn from(value: GlobalDefinitionError<'s, 't>) -> Self {
-        Self::GlobalDefinition(value)
-    }
-}
-
-impl<'s, 't> fmt::Display for SemanticAnalysisError<'s, 't> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::FunctionDefinition(error) => write!(f, "{}", error),
-            Self::GlobalDefinition(error) => write!(f, "{}", error),
-            Self::RootFormError(e) => write!(f, "{e}"),
-        }
     }
 }
 

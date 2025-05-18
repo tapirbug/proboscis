@@ -19,7 +19,7 @@
 (defun * (&rest factors)
     (if (null factors)
         1
-        (intrinsic:mul-2 (car factors) (apply #'* (cdr factors)))))
+        (intrinsic:mul-2 (assert-number (car factors)) (apply #'* (cdr factors)))))
 
 ;; one-argument version not supported
 (defun floor (top bottom)

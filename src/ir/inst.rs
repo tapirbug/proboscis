@@ -182,7 +182,7 @@ pub enum Instruction {
     },
     /// Something that should never happen has happened and code shouldn't
     /// continue executing.
-    Panic
+    Panic,
 }
 
 pub struct InstructionBuilder {

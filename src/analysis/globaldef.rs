@@ -1,5 +1,6 @@
 use std::fmt;
 
+use crate::diagnostic::Diagnostic;
 use crate::parse::{AstNode, Atom, TokenKind};
 
 use crate::source::Source;
@@ -115,6 +116,12 @@ pub enum GlobalDefinitionError<'s, 't> {
         node: &'t AstNode<'s>,
     },
     Form(FormError<'s, 't>),
+}
+
+impl<'s, 't> Diagnostic for GlobalDefinitionError<'s, 't> {
+    fn kind(&self) -> crate::diagnostic::DiagnosticKind {
+        crate::diagnostic::DiagnosticKind::Error
+    }
 }
 
 impl<'s, 't> From<FormError<'s, 't>> for GlobalDefinitionError<'s, 't> {

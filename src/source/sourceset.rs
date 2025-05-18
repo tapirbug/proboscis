@@ -7,6 +7,8 @@ use std::{
     ptr,
 };
 
+use crate::diagnostic::Diagnostic;
+
 /// A set of source files that should be compiled as a unit.
 pub struct SourceSet {
     /// Append-only combined source code without duplicate source files.
@@ -210,6 +212,12 @@ impl fmt::Display for SourceError {
                 )
             }
         }
+    }
+}
+
+impl Diagnostic for SourceError {
+    fn kind(&self) -> crate::diagnostic::DiagnosticKind {
+        crate::diagnostic::DiagnosticKind::Error
     }
 }
 

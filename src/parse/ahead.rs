@@ -1,8 +1,4 @@
-use super::{
-    lexer::LexerError,
-    stream::TokenStream,
-    token::Token,
-};
+use super::{lexer::LexerError, stream::TokenStream, token::Token};
 use crate::source::Source;
 use std::mem;
 

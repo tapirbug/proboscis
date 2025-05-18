@@ -224,7 +224,7 @@ impl<'s> fmt::Display for LexerError<'s> {
                 writeln!(f, "{}", fragment.source_context())?;
             }
             LexerError::EmptyFuncName { fragment } => {
-                writeln!(f, "misssing function name: {}", fragment)?;
+                writeln!(f, "missing function name: {}", fragment)?;
                 writeln!(f, "{}", fragment.source_context())?;
             }
             LexerError::UnterminatedStringLit { fragment } => {
